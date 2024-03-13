@@ -1,0 +1,17 @@
+description: >
+  The `install` command is used to simplify installation of Syft.
+
+usage:
+  version: 2.1
+  orbs:
+    syft: juburr/syft-orb@1.0.0
+  jobs:
+    sign-images:
+      docker:
+        - image: cimg/base:stable
+      steps:
+        - syft/install
+  workflows:
+    use-my-orb:
+      jobs:
+        - sign-images
