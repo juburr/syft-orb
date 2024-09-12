@@ -17,6 +17,8 @@ echo "  VERSION: ${VERSION}"
 # Lookup table of sha512 checksums for different versions of syft
 declare -A sha512sums
 sha512sums=(
+    ["1.12.2"]="cd521558641bcf24af1e130ff4e1cd45302e78bf22b2fcf0d04ff831fe27a926f3129b3a3b02ac6fe4497db9e8d43d40a23caf5f847127fc0c39e714724a137c"
+    # Version 1.12.0 and 1.12.1 were not released correctly.
     ["1.11.1"]="9c55bbcf5b248b52dd2b9d0e0785abe548d0550db2202c1a66b219b2653060ee9aebedf8e3e94bdd6150897a5a47154c46637f375ee852105d665b7b9b43e437"
     ["1.11.0"]="30872c3c9004e6699bf2afe587acc30aa6df613b4c01c66720cc5b8fec387121f8aab858191916b1182deea4fa1fdb0262af6937605e3eae1beb652aaa625231"
     ["1.10.0"]="ce4348e853bdaabe82e698f18137d4a7d58291f458c152bc8b32b5dd2895dd58b274bd1603b4b6b08069ef96733f08482581e9cf176af4aabd1bcc6e39b2e9f9"
