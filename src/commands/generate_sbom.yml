@@ -1,0 +1,29 @@
+description: Generates Software Bill of Materials (SBOM) for a container image
+parameters:
+  image_uri:
+    type: string
+    description: Image URI of the container image to scan.
+  output_file:
+    type: string
+    default: sbom.spdx.json
+    description: File to output scan results to.
+  output_format:
+    type: enum
+    default: spdx-json
+    description: Output format of the SBOM. Should allow an array; use a single value enum for now.
+    enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
+  scope:
+    type: enum
+    default: squashed
+    description: Selection of layers to catalog.
+    enum: ["squashed", "all-layers"]
+steps:
+  - run:
+      name: Generate SBOM
+      environment:
+        PARAM_IMAGE_URI: << parameters.image_uri >>
+        PARAM_OUTPUT_FILE: << parameters.output_file >>
+        PARAM_OUTPUT_FORMAT: << parameters.output_format >>
+        PARAM_SCOPE: << parameters.scope >>
+      shell: /bin/bash
+      command: << include(scripts/generate_sbom.sh) >>

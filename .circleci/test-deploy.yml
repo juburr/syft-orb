@@ -24,7 +24,7 @@ jobs:
   # You may want to add additional validation steps to ensure the commands are working as expected.
   command-test:
     docker:
-      - image: cimg/base:current
+      - image: cimg/base:current-22.04
     steps:
       - checkout
       # Run your orb's commands to validate them.
@@ -32,6 +32,23 @@ jobs:
       - run:
           name: Verify Install
           command: command -v syft
+      - run:
+          name: Log Syft Version
+          command: syft version
+      - syft-orb/generate_sbom:
+          image_uri: gcr.io/distroless/static:latest
+          output_file: distroless_static.spdx.json
+          output_format: spdx-json
+          scope: squashed
+      - syft-orb/log_sbom:
+          pretty: true
+          sbom_format: spdx-json
+          sbom_path: distroless_static.spdx.json
+      - syft-orb/log_sbom:
+          pretty: false
+          sbom_format: spdx-json
+          sbom_path: distroless_static.spdx.json
+
 workflows:
   test-deploy:
     jobs:
