@@ -28,6 +28,7 @@ steps:
         PARAM_INSTALL_PATH: << parameters.install_path >>
         PARAM_VERIFY_CHECKSUMS: << parameters.verify_checksums >>
         PARAM_VERSION: << parameters.version >>
+      shell: /bin/bash
       command: << include(scripts/install.sh) >>
   - when:
       condition: << parameters.caching >>
