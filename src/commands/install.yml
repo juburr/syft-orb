@@ -14,7 +14,7 @@ parameters:
     description: Option to perform SHA-512 checksum verification on the downloaded Syft executable.
   version:
     type: string
-    default: "1.12.2"
+    default: "1.14.0"
     description: Specify the semver of the Syft version to install.
 steps:
   - when:
