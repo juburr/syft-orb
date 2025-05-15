@@ -12,7 +12,7 @@ usage:
       steps:
         - syft/install
         - syft/generate_sbom:
-            image_uri: gcr.io/distroless/static:latest
+            source: gcr.io/distroless/static:latest
             output_file: distroless_static.spdx.json
         - syft/log_sbom:
             sbom_path: distroless_static.spdx.json
