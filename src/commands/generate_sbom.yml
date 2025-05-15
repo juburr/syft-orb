@@ -1,8 +1,8 @@
-description: Generates Software Bill of Materials (SBOM) for a container image
+description: Generates Software Bill of Materials (SBOM)
 parameters:
-  image_uri:
+  source:
     type: string
-    description: Image URI of the container image to scan.
+    description: Container image URI or filesystem directory to scan.
   output_file:
     type: string
     default: sbom.spdx.json
@@ -21,7 +21,7 @@ steps:
   - run:
       name: Generate SBOM
       environment:
-        PARAM_IMAGE_URI: << parameters.image_uri >>
+        PARAM_SOURCE: << parameters.source >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
         PARAM_OUTPUT_FORMAT: << parameters.output_format >>
         PARAM_SCOPE: << parameters.scope >>

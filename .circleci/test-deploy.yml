@@ -36,7 +36,7 @@ jobs:
           name: Log Syft Version
           command: syft version
       - syft-orb/generate_sbom:
-          image_uri: gcr.io/distroless/static:latest
+          source: gcr.io/distroless/static:latest
           output_file: distroless_static.spdx.json
           output_format: spdx-json
           scope: squashed
@@ -48,6 +48,19 @@ jobs:
           pretty: false
           sbom_format: spdx-json
           sbom_path: distroless_static.spdx.json
+      - run:
+          name: Download an RPM to test with
+          command: |
+            mkdir -p /tmp/rpm
+            curl -L -o /tmp/rpm/syft_1.24.0_linux_amd64.rpm https://github.com/anchore/syft/releases/download/v1.24.0/syft_1.24.0_linux_amd64.rpm
+      - syft-orb/generate_sbom:
+          source: /tmp/rpm/syft_1.24.0_linux_amd64.rpm
+          output_file: syft_rpm.spdx.json
+          output_format: spdx-json
+      - syft-orb/log_sbom:
+          pretty: true
+          sbom_format: spdx-json
+          sbom_path: syft_rpm.spdx.json
 
 workflows:
   test-deploy:
