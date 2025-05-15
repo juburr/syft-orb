@@ -253,7 +253,14 @@ fi
 # If there was no cache hit, go ahead and re-download the binary.
 # Tar it up to save on cache space used.
 if [[ ! -f syft ]]; then
-    wget "https://github.com/anchore/syft/releases/download/v${VERSION}/syft_${VERSION}_linux_amd64.tar.gz" -O syft.tar.gz
+    if command -v wget &> /dev/null; then
+        wget "https://github.com/anchore/syft/releases/download/v${VERSION}/syft_${VERSION}_linux_amd64.tar.gz" -O syft.tar.gz
+    elif command -v curl &> /dev/null; then
+        curl -L "https://github.com/anchore/syft/releases/download/v${VERSION}/syft_${VERSION}_linux_amd64.tar.gz" -o syft.tar.gz
+    else
+        echo "ERROR: Neither wget nor curl is available. Please install one of them."
+        exit 1
+    fi
     tar xvzf syft.tar.gz syft
 fi
 
