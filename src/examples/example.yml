@@ -4,7 +4,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    syft: juburr/syft-orb@0.4.0
+    syft: juburr/syft-orb@0.4.1
   jobs:
     sign-images:
       docker:
