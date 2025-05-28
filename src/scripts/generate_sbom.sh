@@ -23,6 +23,15 @@ OUTPUT_FILE=$(realpath --no-symlinks "${OUTPUT_FILE}")
 echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
 echo ""
 
+# Ensure the output directory exists
+OUTPUT_DIR=$(dirname "${OUTPUT_FILE}")
+if [[ ! -d "${OUTPUT_DIR}" ]]; then
+  echo "Creating output directory: ${OUTPUT_DIR}"
+  mkdir -p "${OUTPUT_DIR}"
+else
+  echo "Output directory already exists: ${OUTPUT_DIR}"
+fi
+
 # RPM Handling
 #
 # If the source is an .rpm file, scanning it with syft will return
