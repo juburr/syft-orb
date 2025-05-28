@@ -1,5 +1,5 @@
 <div align="center">
-  <img align="center" width="320" src="assets/logos/syft-orb-logo.png" alt="Syft Orb">
+  <img align="center" width="250" src="assets/logos/syft-orb-256px.png" alt="Syft Orb">
   <h1>CircleCI Syft Orb</h1>
   <i>A CircleCI orb for streamlining Syft integration and SBOM generation.</i><br /><br />
 </div>
