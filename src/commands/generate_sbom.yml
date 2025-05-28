@@ -11,7 +11,7 @@ parameters:
     type: enum
     default: spdx-json
     description: Output format of the SBOM. Should allow an array; use a single value enum for now.
-    enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
+    enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "purls", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
   scope:
     type: enum
     default: squashed
