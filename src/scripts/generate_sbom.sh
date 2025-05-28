@@ -32,6 +32,31 @@ echo ""
 # the individual files inside the RPM and include them in the SBOM.
 BASE_PATH="/"
 if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
+  echo "Detected an RPM file as the scan target."
+
+  # Expand wildcards in the SOURCE path, allowing callers to wilcard
+  # the version number within the RPM filename. This script generates
+  # an SBOM for a single RPM file, so we expect the SOURCE to match
+  # exactly one file. If multiple files match, we will error out and
+  # require the caller to specify a more specific SOURCE.
+  if [[ "${SOURCE}" == *\** || "${SOURCE}" == *\?* ]]; then
+    echo "Detected wildcard in SOURCE. Expanding..."
+    mapfile -t matched_files < <(compgen -G "${SOURCE}" || echo "")
+
+    # Check if we got exactly one match
+    if [[ ${#matched_files[@]} -eq 0 ]]; then
+      echo "ERROR: No files matched pattern '${SOURCE}'"
+      exit 1
+    elif [[ ${#matched_files[@]} -gt 1 ]]; then
+      echo "ERROR: Multiple files matched pattern '${SOURCE}'"
+      printf "  - %s\n" "${matched_files[@]}"
+      exit 1
+    fi
+
+    SOURCE="${matched_files[0]}"
+    echo "  Expanded SOURCE: ${SOURCE}"
+  fi
+
   echo "Detected RPM file. Extracting contents to temporary directory..."
 
   # If rpm2cpio is not installed, make a best effort to install it.
