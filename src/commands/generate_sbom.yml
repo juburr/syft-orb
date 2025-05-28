@@ -2,7 +2,7 @@ description: Generates Software Bill of Materials (SBOM)
 parameters:
   source:
     type: string
-    description: Container image URI or filesystem directory to scan.
+    description: The container image URI, RPM filename, or filesystem directory to scan.
   output_file:
     type: string
     default: sbom.spdx.json

@@ -11,7 +11,7 @@ parameters:
     enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
   sbom_path:
     type: string
-    description: Path to the SBOM
+    description: Path to the SBOM file(s). Wildcards are supported to match multiple files, but each must have the same sbom_format.
 steps:
   - run:
       name: Log SBOM Contents
