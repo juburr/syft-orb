@@ -13,7 +13,7 @@ Use the installation command to add the `syft` binary to your CircleCI job:
 
 ```yaml
 orbs:
-  syft: juburr/syft-orb@0.4.3
+  syft: juburr/syft-orb@0.4.4
 
 jobs:
   sbom_generation:
