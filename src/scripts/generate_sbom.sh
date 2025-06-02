@@ -17,20 +17,22 @@ echo "  OUTPUT_FORMAT: ${OUTPUT_FORMAT}"
 echo "  SCOPE: ${SCOPE}"
 echo ""
 
+# Ensure the output directory exists
+# Automatically create it as a convenience for the caller.
+# This must be done before computing the absolute path with 'realpath'.
+OUTPUT_DIR=$(dirname "${OUTPUT_FILE}")
+if [[ ! -d "${OUTPUT_DIR}" ]]; then
+  echo "    Creating output directory: ${OUTPUT_DIR}"
+  mkdir -p "${OUTPUT_DIR}"
+else
+  echo "    Output directory already exists: ${OUTPUT_DIR}"
+fi
+
 # Expand SBOM filename for debugging purposes
 echo "Computing absolute path for the SBOM..."
 OUTPUT_FILE=$(realpath --no-symlinks "${OUTPUT_FILE}")
 echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
 echo ""
-
-# Ensure the output directory exists
-OUTPUT_DIR=$(dirname "${OUTPUT_FILE}")
-if [[ ! -d "${OUTPUT_DIR}" ]]; then
-  echo "Creating output directory: ${OUTPUT_DIR}"
-  mkdir -p "${OUTPUT_DIR}"
-else
-  echo "Output directory already exists: ${OUTPUT_DIR}"
-fi
 
 # RPM Handling
 #
