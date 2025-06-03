@@ -103,13 +103,15 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   fi
 
   # Extract the contents of the RPM to a temporary directory
+  # Syft doesn't capture filesystem permissions in the SBOM, so ignore them to
+  # prevent permission errors.
   TMP_SCAN_DIR=$(mktemp -d)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
-  rpm2cpio "${SOURCE}" | cpio -idmv --no-absolute-filenames --quiet --directory "${TMP_SCAN_DIR}"
+  rpm2cpio "${SOURCE}" | cpio -idmv --no-absolute-filenames --no-preserve-owner --quiet --directory "${TMP_SCAN_DIR}"
 
-  # Change directories before running filesystem-based scans to prevent the temporary directory
-  # paths from showing up in the SBOM, as it does not represent the actual filesystem structure
-  # after the RPM is installed.
+  # Change directories before running filesystem-based scans to prevent the
+  # temporary directory paths from showing up in the SBOM, as it does not
+  # represent the actual filesystem structure after the RPM is installed.
   # Before: "spdxElementId": "SPDXRef-DocumentRoot-Directory--tmp-tmp.VU9UMSOAIP"
   # After: "spdxElementId": "SPDXRef-DocumentRoot-Directory-."
   SOURCE="dir:."
