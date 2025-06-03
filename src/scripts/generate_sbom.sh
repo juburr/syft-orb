@@ -106,7 +106,15 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   TMP_SCAN_DIR=$(mktemp -d)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
   rpm2cpio "${SOURCE}" | cpio -idmv --no-absolute-filenames --quiet --directory "${TMP_SCAN_DIR}"
-  SOURCE="dir:${TMP_SCAN_DIR}"
+
+  # Change directories before running filesystem-based scans to prevent the temporary directory
+  # paths from showing up in the SBOM, as it does not represent the actual filesystem structure
+  # after the RPM is installed.
+  # Before: "spdxElementId": "SPDXRef-DocumentRoot-Directory--tmp-tmp.VU9UMSOAIP"
+  # After: "spdxElementId": "SPDXRef-DocumentRoot-Directory-."
+  SOURCE="dir:."
+  pushd . > /dev/null
+  cd "${TMP_SCAN_DIR}"
   echo "  SOURCE: ${SOURCE}"
   BASE_PATH="${TMP_SCAN_DIR}"
 fi
@@ -118,6 +126,7 @@ syft scan -vv --scope "${SCOPE}" --output "${OUTPUT_FORMAT}" --base-path "${BASE
 # If the source was an RPM file, remove the temporary directory
 if [[ -n "${TMP_SCAN_DIR}" ]]; then
   echo "Cleaning up temporary directory..."
+  popd > /dev/null
   rm -rf "${TMP_SCAN_DIR}"
 fi
 
