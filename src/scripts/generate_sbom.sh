@@ -12,6 +12,8 @@ SCOPE=$(circleci env subst "${PARAM_SCOPE}")
 # Print command parameters for debugging purposes.
 echo "Running Syft scanner to generate an SBOM with parameters:"
 echo "  SOURCE: ${SOURCE}"
+echo "  OS_USER: $(whoami 2> /dev/null || true)"
+echo "  OS_USER_GROUPS: $(id -Gn 2> /dev/null || true)"
 echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
 echo "  OUTPUT_FORMAT: ${OUTPUT_FORMAT}"
 echo "  SCOPE: ${SCOPE}"
@@ -74,37 +76,46 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   if ! command -v rpm2cpio &> /dev/null; then
     echo "rpm2cpio not found. Attempting to install..."
     if command -v dnf &> /dev/null; then
+      echo "Installing rpm2cpio using dnf..."
       sudo dnf install -y rpm2cpio
     elif command -v yum &> /dev/null; then
+      echo "Installing rpm2cpio using yum..."
       sudo yum install -y rpm2cpio
     elif command -v apt-get &> /dev/null; then
+      echo "Installing rpm2cpio using apt-get..."
       sudo apt-get update
       sudo apt-get install -y rpm2cpio
     else
       echo "Unable to install rpm2cpio. Please install it manually."
       exit 1
     fi
+    echo "rpm2cpio installed successfully."
   fi
 
   # If cpio is not installed, make a best effort to install it.
   if ! command -v cpio &> /dev/null; then
     echo "cpio not found. Attempting to install..."
     if command -v dnf &> /dev/null; then
+      echo "Installing cpio using dnf..."
       sudo dnf install -y cpio
     elif command -v yum &> /dev/null; then
+      echo "Installing cpio using yum..."
       sudo yum install -y cpio
     elif command -v apt-get &> /dev/null; then
+      echo "Installing cpio using apt-get..."
       sudo apt-get update
       sudo apt-get install -y cpio
     else
       echo "Unable to install cpio. Please install it manually."
       exit 1
     fi
+    echo "cpio installed successfully."
   fi
 
   # Extract the contents of the RPM to a temporary directory
   # Syft doesn't capture filesystem permissions in the SBOM, so ignore them to
   # prevent permission errors.
+  echo "Extracting RPM contents to a temporary directory..."
   TMP_SCAN_DIR=$(mktemp -d)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
   rpm2cpio "${SOURCE}" | cpio -idmv --no-absolute-filenames --no-preserve-owner --quiet --directory "${TMP_SCAN_DIR}"
