@@ -4,6 +4,7 @@ set -e
 set +o history
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
+ENRICH=$(circleci env subst "${PARAM_ENRICH}")
 SOURCE=$(circleci env subst "${PARAM_SOURCE}")
 OUTPUT_FILE=$(circleci env subst "${PARAM_OUTPUT_FILE}")
 OUTPUT_FORMAT=$(circleci env subst "${PARAM_OUTPUT_FORMAT}")
@@ -11,6 +12,7 @@ SCOPE=$(circleci env subst "${PARAM_SCOPE}")
 
 # Print command parameters for debugging purposes.
 echo "Running Syft scanner to generate an SBOM with parameters:"
+echo "  ENRICH: ${ENRICH}"
 echo "  SOURCE: ${SOURCE}"
 echo "  OS_USER: $(whoami 2> /dev/null || true)"
 echo "  OS_USER_GROUPS: $(id -Gn 2> /dev/null || true)"
@@ -132,9 +134,20 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   BASE_PATH="${TMP_SCAN_DIR}"
 fi
 
+# Build the syft command arguments
+syft_args=(scan -vv --scope "${SCOPE}" --output "${OUTPUT_FORMAT}" --base-path "${BASE_PATH}")
+
+# Conditionally add the --enrich flag
+if [[ -n "${ENRICH}" && "${ENRICH}" != "none" ]]; then
+  syft_args+=(--enrich "${ENRICH}")
+fi
+
+# The source is added last and can be a container image or filesystem path.
+syft_args+=("${SOURCE}")
+
 # Generate the SBOM
 echo "Scanning with syft..."
-syft scan -vv --scope "${SCOPE}" --output "${OUTPUT_FORMAT}" --base-path "${BASE_PATH}" "${SOURCE}" > "${OUTPUT_FILE}"
+syft "${syft_args[@]}" > "${OUTPUT_FILE}"
 
 # If the source was an RPM file, remove the temporary directory
 if [[ -n "${TMP_SCAN_DIR}" ]]; then
