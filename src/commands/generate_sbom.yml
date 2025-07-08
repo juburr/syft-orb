@@ -1,5 +1,11 @@
 description: Generates Software Bill of Materials (SBOM)
 parameters:
+  enrich:
+    type: enum
+    default: all
+    description: Enable package data enrichment from local and online sources,
+      to include additional metadata such as licenses, URLs, and more.
+    enum: ["none", "all", "golang", "java", "javascript"]
   source:
     type: string
     description: The container image URI, RPM filename, or filesystem directory to scan.
@@ -21,6 +27,7 @@ steps:
   - run:
       name: Generate SBOM
       environment:
+        PARAM_ENRICH: << parameters.enrich >>
         PARAM_SOURCE: << parameters.source >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
         PARAM_OUTPUT_FORMAT: << parameters.output_format >>
