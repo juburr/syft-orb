@@ -4,6 +4,7 @@ set -e
 set +o history
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
+BASE_PATH=$(circleci env subst "${PARAM_BASE_PATH}")
 ENRICH=$(circleci env subst "${PARAM_ENRICH}")
 SOURCE=$(circleci env subst "${PARAM_SOURCE}")
 OUTPUT_FILE=$(circleci env subst "${PARAM_OUTPUT_FILE}")
@@ -12,6 +13,7 @@ SCOPE=$(circleci env subst "${PARAM_SCOPE}")
 
 # Print command parameters for debugging purposes.
 echo "Running Syft scanner to generate an SBOM with parameters:"
+echo "  BASE_PATH: ${BASE_PATH}"
 echo "  ENRICH: ${ENRICH}"
 echo "  SOURCE: ${SOURCE}"
 echo "  OS_USER: $(whoami 2> /dev/null || true)"
@@ -45,7 +47,6 @@ echo ""
 # best results, extract the contents of the rpm to a temporary
 # directory and scan that instead. This will allow syft to identify
 # the individual files inside the RPM and include them in the SBOM.
-BASE_PATH="/"
 if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   echo "Detected an RPM file as the scan target."
 
@@ -131,7 +132,17 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   pushd . > /dev/null
   cd "${TMP_SCAN_DIR}"
   echo "  SOURCE: ${SOURCE}"
-  BASE_PATH="${TMP_SCAN_DIR}"
+
+  # If the user provided their own base path, use it. Otherwise it's desirable to set the
+  # base path to the root directory where the RPM files are extracted.
+  if [[ -z "${BASE_PATH}" ]]; then
+    BASE_PATH="${TMP_SCAN_DIR}"
+  fi
+fi
+
+# If we don't have a base path yet, assume "/"
+if [[ -z "${BASE_PATH}" ]]; then
+  BASE_PATH="/"
 fi
 
 # Build the syft command arguments
