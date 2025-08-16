@@ -1,5 +1,9 @@
 description: Generates Software Bill of Materials (SBOM)
 parameters:
+  base_path:
+    type: string
+    default: ""
+    description: Override the default base path for SBOM generation. The orb automatically sets this if left blank.
   enrich:
     type: enum
     default: all
@@ -27,6 +31,7 @@ steps:
   - run:
       name: Generate SBOM
       environment:
+        PARAM_BASE_PATH: << parameters.base_path >>
         PARAM_ENRICH: << parameters.enrich >>
         PARAM_SOURCE: << parameters.source >>
         PARAM_OUTPUT_FILE: << parameters.output_file >>
