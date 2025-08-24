@@ -54,7 +54,7 @@ jobs:
             mkdir -p /tmp/rpm
             curl -L -o /tmp/rpm/syft_1.24.0_linux_amd64.rpm https://github.com/anchore/syft/releases/download/v1.24.0/syft_1.24.0_linux_amd64.rpm
       - syft-orb/generate_sbom:
-          source: /tmp/rpm/syft_1.24.0_linux_amd64.rpm
+          source: /tmp/rpm/syft*_linux_amd64.rpm
           output_file: syft_rpm.spdx.json
           output_format: spdx-json
       - syft-orb/log_sbom:
