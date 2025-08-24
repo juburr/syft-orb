@@ -71,7 +71,7 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
     echo "Detected wildcard in SOURCE. Expanding..."
 
     # One match per line; tolerate zero matches without aborting set -e
-    mapfile -t matched_files < <(compgen -G -- "$SOURCE" || true)
+    mapfile -t matched_files < <(compgen -G "$SOURCE" || true)
 
     case ${#matched_files[@]} in
       0)
