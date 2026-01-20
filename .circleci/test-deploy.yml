@@ -35,19 +35,80 @@ jobs:
       - run:
           name: Log Syft Version
           command: syft version
+
+      # Test 1: Explicit output path (original behavior)
       - syft-orb/generate_sbom:
           source: gcr.io/distroless/static:latest
           output_file: distroless_static.spdx.json
           output_format: spdx-json
           scope: squashed
+      - run:
+          name: "Verify explicit output path: distroless_static.spdx.json"
+          command: |
+            if [[ ! -f "distroless_static.spdx.json" ]]; then
+              echo "ERROR: Expected file distroless_static.spdx.json not found"
+              exit 1
+            fi
+            echo "SUCCESS: Found distroless_static.spdx.json"
       - syft-orb/log_sbom:
           pretty: true
           sbom_format: spdx-json
           sbom_path: distroless_static.spdx.json
-      - syft-orb/log_sbom:
-          pretty: false
-          sbom_format: spdx-json
-          sbom_path: distroless_static.spdx.json
+
+      # Test 2: Auto-generated output (default mode, empty output_file)
+      # Expected output: sboms/static-latest.spdx.json
+      - syft-orb/generate_sbom:
+          source: gcr.io/distroless/static:latest
+          output_format: spdx-json
+      - run:
+          name: "Verify auto-generated output in sboms/ directory"
+          command: |
+            EXPECTED="sboms/static-latest.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
+              echo "Contents of sboms/ directory:"
+              ls -la sboms/ || echo "sboms/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+      # Test 3: Auto-generated output in custom directory (trailing slash)
+      # Expected output: custom-output/static-latest.spdx.json
+      - syft-orb/generate_sbom:
+          source: gcr.io/distroless/static:latest
+          output_file: custom-output/
+          output_format: spdx-json
+      - run:
+          name: "Verify auto-generated output in custom directory"
+          command: |
+            EXPECTED="custom-output/static-latest.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
+              echo "Contents of custom-output/ directory:"
+              ls -la custom-output/ || echo "custom-output/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+      # Test 4: Auto-generated output with CycloneDX format
+      # Expected output: sboms/static-latest.cdx.json
+      - syft-orb/generate_sbom:
+          source: gcr.io/distroless/static:latest
+          output_file: cdx-output/
+          output_format: cyclonedx-json
+      - run:
+          name: "Verify auto-generated CycloneDX output"
+          command: |
+            EXPECTED="cdx-output/static-latest.cdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
+              echo "Contents of cdx-output/ directory:"
+              ls -la cdx-output/ || echo "cdx-output/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+      # Test 5: RPM file with explicit output path
       - run:
           name: Download an RPM to test with
           command: |
@@ -57,10 +118,391 @@ jobs:
           source: /tmp/rpm/syft*_linux_amd64.rpm
           output_file: syft_rpm.spdx.json
           output_format: spdx-json
+      - run:
+          name: "Verify RPM SBOM output"
+          command: |
+            if [[ ! -f "syft_rpm.spdx.json" ]]; then
+              echo "ERROR: Expected file syft_rpm.spdx.json not found"
+              exit 1
+            fi
+            echo "SUCCESS: Found syft_rpm.spdx.json"
       - syft-orb/log_sbom:
           pretty: true
           sbom_format: spdx-json
           sbom_path: syft_rpm.spdx.json
+
+      # Test 6: RPM file with auto-generated output
+      # Expected output: sboms/syft_1.24.0_linux_amd64.spdx.json
+      - syft-orb/generate_sbom:
+          source: /tmp/rpm/syft*_linux_amd64.rpm
+          output_format: spdx-json
+      - run:
+          name: "Verify RPM auto-generated output"
+          command: |
+            EXPECTED="sboms/syft_1.24.0_linux_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
+              echo "Contents of sboms/ directory:"
+              ls -la sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+  # Test RPM package handling with fictitious packages
+  test-rpm-packages:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - syft-orb/install
+      - run:
+          name: Install FPM and Go for package creation
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm golang-go
+            sudo gem install fpm
+      - run:
+          name: Create fictitious RPM packages
+          command: |
+            # Create package content directories
+            mkdir -p /tmp/pkg-content/usr/share/myapp
+            mkdir -p /tmp/pkg-content/usr/bin
+            mkdir -p /tmp/pkg-content/etc/myapp
+
+            # Create some identifiable files
+            echo "MyApp Configuration File v1.0" > /tmp/pkg-content/etc/myapp/config.conf
+            echo "MyApp Data File" > /tmp/pkg-content/usr/share/myapp/data.txt
+
+            # Compile a simple Go binary that syft can catalog
+            mkdir -p /tmp/go-src
+            cat > /tmp/go-src/main.go \<< 'GOSRC'
+            package main
+
+            import "fmt"
+
+            func main() {
+                fmt.Println("Hello from MyApp")
+            }
+            GOSRC
+            cd /tmp/go-src && go build -o /tmp/pkg-content/usr/bin/myapp main.go
+            echo "Compiled Go binary:"
+            file /tmp/pkg-content/usr/bin/myapp
+
+            # Create output directory
+            mkdir -p /tmp/rpms
+
+            # Create RPMs for different RHEL versions
+            for el_version in 7 8 9 10; do
+              fpm -s dir -t rpm \
+                -n myapp \
+                -v "1.2.3" \
+                --iteration "1.el${el_version}" \
+                --architecture x86_64 \
+                --description "Fictitious test application" \
+                --url "https://example.com/myapp" \
+                --license "MIT" \
+                -C /tmp/pkg-content \
+                -p "/tmp/rpms/myapp-1.2.3-1.el${el_version}.x86_64.rpm" \
+                .
+              echo "Created: myapp-1.2.3-1.el${el_version}.x86_64.rpm"
+            done
+
+            echo ""
+            echo "Created RPMs:"
+            ls -la /tmp/rpms/
+
+      # Test el7 RPM with auto-generated output
+      - syft-orb/generate_sbom:
+          source: /tmp/rpms/myapp-1.2.3-1.el7.x86_64.rpm
+          output_format: spdx-json
+      - run:
+          name: "Verify el7 RPM: auto-generated output and SBOM contents"
+          command: |
+            EXPECTED="sboms/myapp-1.2.3-1.el7.x86_64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la sboms/ || echo "sboms/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+            # Verify the SBOM is valid JSON and contains expected SPDX structure
+            echo ""
+            echo "Validating SBOM structure..."
+            if ! python3 -c "import json; json.load(open('${EXPECTED}'))"; then
+              echo "ERROR: SBOM is not valid JSON"
+              exit 1
+            fi
+            echo "  Valid JSON: YES"
+
+            # Check for SPDX version (proves syft generated it)
+            if grep -q "SPDX-2.3" "${EXPECTED}"; then
+              echo "  SPDX version: 2.3"
+            else
+              echo "ERROR: SBOM missing SPDX version"
+              exit 1
+            fi
+
+            # Check for the Go binary in the SBOM
+            # Syft should detect and catalog the compiled Go binary
+            if grep -q "myapp" "${EXPECTED}"; then
+              echo "  Go binary cataloged: YES"
+            else
+              echo "  ERROR: Go binary 'myapp' not found in SBOM"
+              echo "  This indicates the RPM extraction may have failed."
+              echo "  SBOM contents:"
+              cat "${EXPECTED}"
+              exit 1
+            fi
+            echo "SUCCESS: SBOM contains cataloged binary from extracted RPM"
+
+      # Test el8 RPM with custom directory output
+      - syft-orb/generate_sbom:
+          source: /tmp/rpms/myapp-1.2.3-1.el8.x86_64.rpm
+          output_file: rpm-sboms/
+          output_format: spdx-json
+      - run:
+          name: "Verify el8 RPM: custom directory output"
+          command: |
+            EXPECTED="rpm-sboms/myapp-1.2.3-1.el8.x86_64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la rpm-sboms/ || echo "rpm-sboms/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+            # Verify valid SBOM structure
+            if python3 -c "import json; json.load(open('${EXPECTED}'))" && grep -q "SPDX-2.3" "${EXPECTED}"; then
+              echo "SUCCESS: Valid SPDX SBOM generated"
+            else
+              echo "ERROR: Invalid SBOM"
+              exit 1
+            fi
+
+      # Test el9 RPM with wildcard source
+      - syft-orb/generate_sbom:
+          source: "/tmp/rpms/*el9*.rpm"
+          output_file: rpm-sboms/
+          output_format: spdx-json
+      - run:
+          name: "Verify el9 RPM: wildcard source expansion"
+          command: |
+            EXPECTED="rpm-sboms/myapp-1.2.3-1.el9.x86_64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la rpm-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED} (wildcard expansion worked)"
+
+      # Test el10 RPM with explicit output path
+      - syft-orb/generate_sbom:
+          source: /tmp/rpms/myapp-1.2.3-1.el10.x86_64.rpm
+          output_file: el10-explicit.spdx.json
+          output_format: spdx-json
+      - run:
+          name: "Verify el10 RPM: explicit output path"
+          command: |
+            if [[ ! -f "el10-explicit.spdx.json" ]]; then
+              echo "ERROR: Expected file el10-explicit.spdx.json not found"
+              exit 1
+            fi
+            echo "SUCCESS: Found el10-explicit.spdx.json"
+
+      # Test CycloneDX format with RPM
+      - syft-orb/generate_sbom:
+          source: /tmp/rpms/myapp-1.2.3-1.el7.x86_64.rpm
+          output_file: rpm-cdx/
+          output_format: cyclonedx-json
+      - run:
+          name: "Verify RPM with CycloneDX format"
+          command: |
+            EXPECTED="rpm-cdx/myapp-1.2.3-1.el7.x86_64.cdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la rpm-cdx/ || echo "rpm-cdx/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+  # Test DEB package handling with fictitious packages
+  test-deb-packages:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - syft-orb/install
+      - run:
+          name: Install FPM and Go for package creation
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y ruby ruby-dev rubygems build-essential golang-go
+            sudo gem install fpm
+      - run:
+          name: Create fictitious DEB packages
+          command: |
+            # Create package content directories
+            mkdir -p /tmp/pkg-content/usr/share/testpkg
+            mkdir -p /tmp/pkg-content/usr/bin
+            mkdir -p /tmp/pkg-content/etc/testpkg
+
+            # Create some identifiable files
+            echo "TestPkg Configuration" > /tmp/pkg-content/etc/testpkg/settings.conf
+            echo "TestPkg Library Data" > /tmp/pkg-content/usr/share/testpkg/library.dat
+
+            # Compile a simple Go binary that syft can catalog
+            mkdir -p /tmp/go-src
+            cat > /tmp/go-src/main.go \<< 'GOSRC'
+            package main
+
+            import "fmt"
+
+            func main() {
+                fmt.Println("Hello from TestPkg")
+            }
+            GOSRC
+            cd /tmp/go-src && go build -o /tmp/pkg-content/usr/bin/testpkg main.go
+            echo "Compiled Go binary:"
+            file /tmp/pkg-content/usr/bin/testpkg
+
+            # Create output directory
+            mkdir -p /tmp/debs
+
+            # Create DEBs for different Ubuntu versions
+            for ubuntu_ver in focal jammy noble; do
+              fpm -s dir -t deb \
+                -n testpkg \
+                -v "2.0.0" \
+                --iteration "1~${ubuntu_ver}" \
+                --architecture amd64 \
+                --description "Fictitious test package for DEB testing" \
+                --url "https://example.com/testpkg" \
+                --license "Apache-2.0" \
+                -C /tmp/pkg-content \
+                -p "/tmp/debs/testpkg_2.0.0-1~${ubuntu_ver}_amd64.deb" \
+                .
+              echo "Created: testpkg_2.0.0-1~${ubuntu_ver}_amd64.deb"
+            done
+
+            echo ""
+            echo "Created DEBs:"
+            ls -la /tmp/debs/
+
+      # Test focal DEB with auto-generated output
+      - syft-orb/generate_sbom:
+          source: /tmp/debs/testpkg_2.0.0-1~focal_amd64.deb
+          output_format: spdx-json
+      - run:
+          name: "Verify focal DEB: auto-generated output and SBOM contents"
+          command: |
+            EXPECTED="sboms/testpkg_2.0.0-1~focal_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la sboms/ || echo "sboms/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+            # Verify the SBOM is valid JSON and contains expected SPDX structure
+            echo ""
+            echo "Validating SBOM structure..."
+            if ! python3 -c "import json; json.load(open('${EXPECTED}'))"; then
+              echo "ERROR: SBOM is not valid JSON"
+              exit 1
+            fi
+            echo "  Valid JSON: YES"
+
+            # Check for SPDX version (proves syft generated it)
+            if grep -q "SPDX-2.3" "${EXPECTED}"; then
+              echo "  SPDX version: 2.3"
+            else
+              echo "ERROR: SBOM missing SPDX version"
+              exit 1
+            fi
+
+            # Check for the Go binary in the SBOM
+            # Syft should detect and catalog the compiled Go binary
+            if grep -q "testpkg" "${EXPECTED}"; then
+              echo "  Go binary cataloged: YES"
+            else
+              echo "  ERROR: Go binary 'testpkg' not found in SBOM"
+              echo "  This indicates the DEB extraction may have failed."
+              echo "  SBOM contents:"
+              cat "${EXPECTED}"
+              exit 1
+            fi
+            echo "SUCCESS: SBOM contains cataloged binary from extracted DEB"
+
+      # Test jammy DEB with custom directory output
+      - syft-orb/generate_sbom:
+          source: /tmp/debs/testpkg_2.0.0-1~jammy_amd64.deb
+          output_file: deb-sboms/
+          output_format: spdx-json
+      - run:
+          name: "Verify jammy DEB: custom directory output"
+          command: |
+            EXPECTED="deb-sboms/testpkg_2.0.0-1~jammy_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la deb-sboms/ || echo "deb-sboms/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+
+            # Verify valid SBOM structure
+            if python3 -c "import json; json.load(open('${EXPECTED}'))" && grep -q "SPDX-2.3" "${EXPECTED}"; then
+              echo "SUCCESS: Valid SPDX SBOM generated"
+            else
+              echo "ERROR: Invalid SBOM"
+              exit 1
+            fi
+
+      # Test noble DEB with wildcard source
+      - syft-orb/generate_sbom:
+          source: "/tmp/debs/*noble*.deb"
+          output_file: deb-sboms/
+          output_format: spdx-json
+      - run:
+          name: "Verify noble DEB: wildcard source expansion"
+          command: |
+            EXPECTED="deb-sboms/testpkg_2.0.0-1~noble_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la deb-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED} (wildcard expansion worked)"
+
+      # Test DEB with explicit output path
+      - syft-orb/generate_sbom:
+          source: /tmp/debs/testpkg_2.0.0-1~focal_amd64.deb
+          output_file: focal-explicit.spdx.json
+          output_format: spdx-json
+      - run:
+          name: "Verify DEB with explicit output path"
+          command: |
+            if [[ ! -f "focal-explicit.spdx.json" ]]; then
+              echo "ERROR: Expected file focal-explicit.spdx.json not found"
+              exit 1
+            fi
+            echo "SUCCESS: Found focal-explicit.spdx.json"
+
+      # Test CycloneDX format with DEB
+      - syft-orb/generate_sbom:
+          source: /tmp/debs/testpkg_2.0.0-1~jammy_amd64.deb
+          output_file: deb-cdx/
+          output_format: cyclonedx-json
+      - run:
+          name: "Verify DEB with CycloneDX format"
+          command: |
+            EXPECTED="deb-cdx/testpkg_2.0.0-1~jammy_amd64.cdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la deb-cdx/ || echo "deb-cdx/ directory does not exist"
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
 
 workflows:
   test-deploy:
@@ -68,6 +510,10 @@ workflows:
       # Make sure to include "filters: *filters" in every test job you want to run as part of your deployment.
       # Test your orb's commands in a custom job and test your orb's jobs directly as a part of this workflow.
       - command-test:
+          filters: *filters
+      - test-rpm-packages:
+          filters: *filters
+      - test-deb-packages:
           filters: *filters
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
@@ -80,5 +526,7 @@ workflows:
           requires:
             - orb-tools/pack
             - command-test
+            - test-rpm-packages
+            - test-deb-packages
           context: orb-publishing
           filters: *release-filters

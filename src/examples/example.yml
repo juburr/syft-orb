@@ -1,12 +1,36 @@
 description: >
-  The `install` command is used to simplify installation of Syft.
+  Examples demonstrating the `install` and `generate_sbom` commands.
 
 usage:
   version: 2.1
   orbs:
     syft: juburr/syft-orb@latest
   jobs:
-    sign-images:
+    # Example 1: Auto-generated output (default mode)
+    # Outputs to: sboms/static-latest.spdx.json
+    auto-generate-sbom:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - syft/install
+        - syft/generate_sbom:
+            source: gcr.io/distroless/static:latest
+        - syft/log_sbom:
+            sbom_path: sboms/static-latest.spdx.json
+
+    # Example 2: Auto-generate in custom directory
+    # Outputs to: artifacts/static-latest.spdx.json
+    custom-directory-sbom:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - syft/install
+        - syft/generate_sbom:
+            source: gcr.io/distroless/static:latest
+            output_file: artifacts/
+
+    # Example 3: Explicit output path (original behavior)
+    explicit-path-sbom:
       docker:
         - image: cimg/base:current-22.04
       steps:
@@ -16,7 +40,20 @@ usage:
             output_file: distroless_static.spdx.json
         - syft/log_sbom:
             sbom_path: distroless_static.spdx.json
+
+    # Example 4: DEB package scanning
+    scan-deb-package:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - syft/install
+        - run: curl -LO http://archive.ubuntu.com/ubuntu/pool/main/h/hello/hello_2.10-2ubuntu4_amd64.deb
+        - syft/generate_sbom:
+            source: "*.deb"
   workflows:
     use-my-orb:
       jobs:
-        - sign-images
+        - auto-generate-sbom
+        - custom-directory-sbom
+        - explicit-path-sbom
+        - scan-deb-package
