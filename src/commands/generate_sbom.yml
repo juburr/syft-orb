@@ -12,11 +12,16 @@ parameters:
     enum: ["none", "all", "golang", "java", "javascript"]
   source:
     type: string
-    description: The container image URI, RPM filename, or filesystem directory to scan.
+    description: The container image URI, RPM filename, DEB filename, or filesystem directory to scan.
   output_file:
     type: string
-    default: sbom.spdx.json
-    description: File to output scan results to.
+    default: ""
+    description: |
+      Output file path for the SBOM. Supports three modes:
+        - Empty (default): Auto-generates filename in sboms/ directory (e.g., sboms/myapp-1.0.0.spdx.json)
+        - Trailing slash: Auto-generates filename in specified directory (e.g., "custom/" → custom/myapp-1.0.0.spdx.json)
+        - Explicit path: Uses the specified path as-is (e.g., "my-sbom.json")
+      The auto-generated filename is derived from the source (package name for RPM/DEB, image name for containers, directory name for paths) with a format-appropriate suffix.
   output_format:
     type: enum
     default: spdx-json
