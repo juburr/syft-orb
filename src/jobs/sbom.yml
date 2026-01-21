@@ -1,0 +1,141 @@
+description: |
+  Generate Software Bill of Materials (SBOM) for any source: package files
+  (RPM, DEB), container images, directories, or source code. Generates both
+  SPDX and CycloneDX formats and integrates with CircleCI workspaces.
+
+  Output filenames are auto-generated from the source basename with
+  format-appropriate suffixes (e.g., myapp-1.2.3-1.el9.x86_64.spdx.json).
+
+  For source code scanning, use "dir:." to scan the current directory.
+  This captures dependencies from package.json, go.mod, requirements.txt,
+  etc. that may not be present in compiled/transpiled artifacts.
+
+parameters:
+  # Source Configuration
+  source:
+    type: string
+    description: |
+      Package file path, container image, or directory to scan.
+      Wildcards supported for RPM/DEB files.
+      Examples:
+        - "./rpms/myapp*.el9.x86_64.rpm"
+        - "./rpms/myapp*.noarch.rpm"
+        - "./debs/myapp_*_amd64.deb"
+        - "ghcr.io/org/app:1.0.0"
+        - "dir:."
+
+  # Output Configuration
+  output_dir:
+    type: string
+    default: "sboms"
+    description: Directory for generated SBOM files (with trailing slash for auto-generation).
+
+  # Syft Configuration
+  syft_version:
+    type: string
+    default: "1.40.1"
+    description: Syft version to install.
+
+  scope:
+    type: enum
+    default: squashed
+    enum: ["squashed", "all-layers"]
+    description: Layer selection for container image scanning.
+
+  enrich:
+    type: enum
+    default: all
+    enum: ["none", "all", "golang", "java", "javascript"]
+    description: Package data enrichment from local and online sources.
+
+  base_path:
+    type: string
+    default: ""
+    description: Override the default base path for SBOM generation.
+
+  # Workspace Configuration
+  attach_workspace:
+    type: boolean
+    default: true
+    description: Attach workspace before scanning (for accessing build artifacts).
+
+  workspace_root:
+    type: string
+    default: "."
+    description: Directory to attach workspace to.
+
+  persist_to_workspace:
+    type: boolean
+    default: true
+    description: Persist output directory to workspace after generation.
+
+  # Logging Configuration
+  log_sboms:
+    type: boolean
+    default: true
+    description: Pretty-print generated SBOMs to job output.
+
+  # Executor Configuration
+  cimg_tag:
+    type: string
+    default: "current-22.04"
+    description: Tag for cimg/base Docker image.
+
+  resource_class:
+    type: enum
+    default: medium
+    enum: ["small", "medium", "medium+", "large", "xlarge", "2xlarge", "2xlarge+"]
+    description: CircleCI resource class for the job.
+
+docker:
+  - image: cimg/base:<< parameters.cimg_tag >>
+
+resource_class: << parameters.resource_class >>
+
+steps:
+  # Attach workspace if requested
+  - when:
+      condition: << parameters.attach_workspace >>
+      steps:
+        - attach_workspace:
+            at: << parameters.workspace_root >>
+
+  # Install Syft
+  - install:
+      caching: true
+      version: << parameters.syft_version >>
+
+  # Generate SPDX SBOM
+  - generate_sbom:
+      source: << parameters.source >>
+      output_file: << parameters.output_dir >>/
+      output_format: spdx-json
+      scope: << parameters.scope >>
+      enrich: << parameters.enrich >>
+      base_path: << parameters.base_path >>
+
+  # Generate CycloneDX SBOM
+  - generate_sbom:
+      source: << parameters.source >>
+      output_file: << parameters.output_dir >>/
+      output_format: cyclonedx-json
+      scope: << parameters.scope >>
+      enrich: << parameters.enrich >>
+      base_path: << parameters.base_path >>
+
+  # Log SBOMs if requested
+  - when:
+      condition: << parameters.log_sboms >>
+      steps:
+        - log_sbom:
+            sbom_dir: << parameters.output_dir >>
+            pretty: true
+
+  # Persist to workspace if requested
+  - when:
+      condition: << parameters.persist_to_workspace >>
+      steps:
+        - persist_to_workspace:
+            root: .
+            paths:
+              - << parameters.output_dir >>

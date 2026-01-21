@@ -1,26 +1,30 @@
 description: >
-  Examples demonstrating the `install` and `generate_sbom` commands.
+  Examples demonstrating the syft-orb commands and jobs.
 
 usage:
   version: 2.1
   orbs:
     syft: juburr/syft-orb@latest
   jobs:
-    # Example 1: Auto-generated output (default mode)
+    # Example 1: Using the generate_sbom command with auto-generated output
     # Outputs to: sboms/static-latest.spdx.json
-    auto-generate-sbom:
+    command-auto-generate:
       docker:
         - image: cimg/base:current-22.04
       steps:
         - syft/install
         - syft/generate_sbom:
             source: gcr.io/distroless/static:latest
+        # Log a single SBOM file by path
         - syft/log_sbom:
             sbom_path: sboms/static-latest.spdx.json
+        # Or log all SBOMs in a directory (auto-detects format from extension)
+        - syft/log_sbom:
+            sbom_dir: sboms
 
-    # Example 2: Auto-generate in custom directory
+    # Example 2: Using the generate_sbom command with custom directory
     # Outputs to: artifacts/static-latest.spdx.json
-    custom-directory-sbom:
+    command-custom-directory:
       docker:
         - image: cimg/base:current-22.04
       steps:
@@ -29,31 +33,62 @@ usage:
             source: gcr.io/distroless/static:latest
             output_file: artifacts/
 
-    # Example 3: Explicit output path (original behavior)
-    explicit-path-sbom:
+    # Example 3: Build RPMs and persist to workspace
+    build-rpms:
       docker:
         - image: cimg/base:current-22.04
       steps:
-        - syft/install
-        - syft/generate_sbom:
-            source: gcr.io/distroless/static:latest
-            output_file: distroless_static.spdx.json
-        - syft/log_sbom:
-            sbom_path: distroless_static.spdx.json
+        - checkout
+        - run:
+            name: Build RPM packages
+            command: echo "Build your RPMs here"
+        - persist_to_workspace:
+            root: .
+            paths:
+              - rpms/
 
-    # Example 4: DEB package scanning
-    scan-deb-package:
-      docker:
-        - image: cimg/base:current-22.04
-      steps:
-        - syft/install
-        - run: curl -LO http://archive.ubuntu.com/ubuntu/pool/main/h/hello/hello_2.10-2ubuntu4_amd64.deb
-        - syft/generate_sbom:
-            source: "*.deb"
   workflows:
-    use-my-orb:
+    example-workflow:
       jobs:
-        - auto-generate-sbom
-        - custom-directory-sbom
-        - explicit-path-sbom
-        - scan-deb-package
+        # Command-based examples
+        - command-auto-generate
+        - command-custom-directory
+
+        # Job-based example: Source code SBOM
+        # Captures dependencies from package.json, go.mod, requirements.txt, etc.
+        # that may not be present in compiled/transpiled artifacts.
+        # Generates both SPDX and CycloneDX formats automatically.
+        - syft/sbom:
+            name: sbom-source
+            source: "dir:."
+            attach_workspace: false
+            persist_to_workspace: true
+
+        # Job-based examples: Generate SBOMs for RPM packages
+        - build-rpms
+        - syft/sbom:
+            name: sbom-rpm-el9
+            source: "rpms/myapp*.el9.x86_64.rpm"
+            requires:
+              - build-rpms
+
+        # Job-based example: noarch RPM
+        - syft/sbom:
+            name: sbom-rpm-noarch
+            source: "rpms/myapp-config*.noarch.rpm"
+            requires:
+              - build-rpms
+
+        # Job-based example: Container image (no workspace needed)
+        - syft/sbom:
+            name: sbom-container
+            source: "gcr.io/distroless/static:latest"
+            attach_workspace: false
+            persist_to_workspace: false
+
+        # Job-based example: DEB package
+        - syft/sbom:
+            name: sbom-deb
+            source: "debs/myapp_*_amd64.deb"
+            requires:
+              - build-rpms
