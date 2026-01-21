@@ -45,7 +45,7 @@ parameters:
   enrich:
     type: enum
     default: all
-    enum: ["none", "all", "golang", "java", "javascript"]
+    enum: ["none", "all", "golang", "java", "javascript", "python"]
     description: Package data enrichment from local and online sources.
 
   base_path:
