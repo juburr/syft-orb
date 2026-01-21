@@ -36,32 +36,12 @@ jobs:
           name: Log Syft Version
           command: syft version
 
-      # Test 1: Explicit output path (original behavior)
+      # Test 1: Single format with auto-generated output in default directory
       - syft-orb/generate_sbom:
           source: gcr.io/distroless/static:latest
-          output_file: distroless_static.spdx.json
-          output_format: spdx-json
-          scope: squashed
+          output_formats: spdx-json
       - run:
-          name: "Verify explicit output path: distroless_static.spdx.json"
-          command: |
-            if [[ ! -f "distroless_static.spdx.json" ]]; then
-              echo "ERROR: Expected file distroless_static.spdx.json not found"
-              exit 1
-            fi
-            echo "SUCCESS: Found distroless_static.spdx.json"
-      - syft-orb/log_sbom:
-          pretty: true
-          sbom_format: spdx-json
-          sbom_path: distroless_static.spdx.json
-
-      # Test 2: Auto-generated output (default mode, empty output_file)
-      # Expected output: sboms/static-latest.spdx.json
-      - syft-orb/generate_sbom:
-          source: gcr.io/distroless/static:latest
-          output_format: spdx-json
-      - run:
-          name: "Verify auto-generated output in sboms/ directory"
+          name: "Verify single format in default sboms/ directory"
           command: |
             EXPECTED="sboms/static-latest.spdx.json"
             if [[ ! -f "${EXPECTED}" ]]; then
@@ -72,14 +52,13 @@ jobs:
             fi
             echo "SUCCESS: Found ${EXPECTED}"
 
-      # Test 3: Auto-generated output in custom directory (trailing slash)
-      # Expected output: custom-output/static-latest.spdx.json
+      # Test 2: Single format with custom output directory
       - syft-orb/generate_sbom:
           source: gcr.io/distroless/static:latest
-          output_file: custom-output/
-          output_format: spdx-json
+          output_dir: custom-output
+          output_formats: spdx-json
       - run:
-          name: "Verify auto-generated output in custom directory"
+          name: "Verify single format in custom directory"
           command: |
             EXPECTED="custom-output/static-latest.spdx.json"
             if [[ ! -f "${EXPECTED}" ]]; then
@@ -90,25 +69,63 @@ jobs:
             fi
             echo "SUCCESS: Found ${EXPECTED}"
 
-      # Test 4: Auto-generated output with CycloneDX format
-      # Expected output: sboms/static-latest.cdx.json
+      # Test 3: Multiple formats (SPDX and CycloneDX) in single scan
       - syft-orb/generate_sbom:
           source: gcr.io/distroless/static:latest
-          output_file: cdx-output/
-          output_format: cyclonedx-json
+          output_dir: multi-format-output
+          output_formats: "spdx-json,cyclonedx-json"
       - run:
-          name: "Verify auto-generated CycloneDX output"
+          name: "Verify multiple formats generated"
           command: |
-            EXPECTED="cdx-output/static-latest.cdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
-              echo "Contents of cdx-output/ directory:"
-              ls -la cdx-output/ || echo "cdx-output/ directory does not exist"
+            SPDX_FILE="multi-format-output/static-latest.spdx.json"
+            CDX_FILE="multi-format-output/static-latest.cdx.json"
+
+            # Check SPDX file
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected SPDX file ${SPDX_FILE} not found"
+              ls -la multi-format-output/
               exit 1
             fi
-            echo "SUCCESS: Found ${EXPECTED}"
+            echo "SUCCESS: Found ${SPDX_FILE}"
 
-      # Test 5: RPM file with explicit output path
+            # Check CycloneDX file
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected CycloneDX file ${CDX_FILE} not found"
+              ls -la multi-format-output/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${CDX_FILE}"
+
+            # Verify both are valid JSON
+            python3 -c "import json; json.load(open('${SPDX_FILE}'))"
+            python3 -c "import json; json.load(open('${CDX_FILE}'))"
+            echo "SUCCESS: Both files are valid JSON"
+      - syft-orb/log_sbom:
+          pretty: true
+          sbom_dir: multi-format-output
+
+      # Test 4: Three formats in single scan
+      - syft-orb/generate_sbom:
+          source: gcr.io/distroless/static:latest
+          output_dir: three-formats
+          output_formats: "spdx-json,cyclonedx-json,syft-json"
+      - run:
+          name: "Verify three formats generated"
+          command: |
+            SPDX_FILE="three-formats/static-latest.spdx.json"
+            CDX_FILE="three-formats/static-latest.cdx.json"
+            SYFT_FILE="three-formats/static-latest.syft.json"
+
+            for f in "${SPDX_FILE}" "${CDX_FILE}" "${SYFT_FILE}"; do
+              if [[ ! -f "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                ls -la three-formats/
+                exit 1
+              fi
+              echo "SUCCESS: Found ${f}"
+            done
+
+      # Test 5: RPM file with multiple formats
       - run:
           name: Download an RPM to test with
           command: |
@@ -116,34 +133,40 @@ jobs:
             curl -L -o /tmp/rpm/syft_1.24.0_linux_amd64.rpm https://github.com/anchore/syft/releases/download/v1.24.0/syft_1.24.0_linux_amd64.rpm
       - syft-orb/generate_sbom:
           source: /tmp/rpm/syft*_linux_amd64.rpm
-          output_file: syft_rpm.spdx.json
-          output_format: spdx-json
+          output_dir: rpm-multi
+          output_formats: "spdx-json,cyclonedx-json"
       - run:
-          name: "Verify RPM SBOM output"
+          name: "Verify RPM with multiple formats"
           command: |
-            if [[ ! -f "syft_rpm.spdx.json" ]]; then
-              echo "ERROR: Expected file syft_rpm.spdx.json not found"
+            SPDX_FILE="rpm-multi/syft_1.24.0_linux_amd64.spdx.json"
+            CDX_FILE="rpm-multi/syft_1.24.0_linux_amd64.cdx.json"
+
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected SPDX file ${SPDX_FILE} not found"
+              ls -la rpm-multi/
               exit 1
             fi
-            echo "SUCCESS: Found syft_rpm.spdx.json"
-      - syft-orb/log_sbom:
-          pretty: true
-          sbom_format: spdx-json
-          sbom_path: syft_rpm.spdx.json
+            echo "SUCCESS: Found ${SPDX_FILE}"
 
-      # Test 6: RPM file with auto-generated output
-      # Expected output: sboms/syft_1.24.0_linux_amd64.spdx.json
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected CycloneDX file ${CDX_FILE} not found"
+              ls -la rpm-multi/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${CDX_FILE}"
+
+      # Test 6: Single format with trailing slash directory
       - syft-orb/generate_sbom:
-          source: /tmp/rpm/syft*_linux_amd64.rpm
-          output_format: spdx-json
+          source: gcr.io/distroless/static:latest
+          output_dir: trailing-slash/
+          output_formats: cyclonedx-json
       - run:
-          name: "Verify RPM auto-generated output"
+          name: "Verify trailing slash directory handling"
           command: |
-            EXPECTED="sboms/syft_1.24.0_linux_amd64.spdx.json"
+            EXPECTED="trailing-slash/static-latest.cdx.json"
             if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected auto-generated file ${EXPECTED} not found"
-              echo "Contents of sboms/ directory:"
-              ls -la sboms/
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la trailing-slash/ || echo "trailing-slash/ directory does not exist"
               exit 1
             fi
             echo "SUCCESS: Found ${EXPECTED}"
@@ -216,12 +239,12 @@ jobs:
             echo "Created RPMs:"
             ls -la /tmp/rpms/
 
-      # Test el7 RPM with auto-generated output
+      # Test el7 RPM with single format (backward compatibility)
       - syft-orb/generate_sbom:
           source: /tmp/rpms/myapp-1.2.3-1.el7.x86_64.rpm
-          output_format: spdx-json
+          output_formats: spdx-json
       - run:
-          name: "Verify el7 RPM: auto-generated output and SBOM contents"
+          name: "Verify el7 RPM: single format output and SBOM contents"
           command: |
             EXPECTED="sboms/myapp-1.2.3-1.el7.x86_64.spdx.json"
             if [[ ! -f "${EXPECTED}" ]]; then
@@ -261,75 +284,91 @@ jobs:
             fi
             echo "SUCCESS: SBOM contains cataloged binary from extracted RPM"
 
-      # Test el8 RPM with custom directory output
+      # Test el8 RPM with multiple formats
       - syft-orb/generate_sbom:
           source: /tmp/rpms/myapp-1.2.3-1.el8.x86_64.rpm
-          output_file: rpm-sboms/
-          output_format: spdx-json
+          output_dir: rpm-sboms
+          output_formats: "spdx-json,cyclonedx-json"
       - run:
-          name: "Verify el8 RPM: custom directory output"
+          name: "Verify el8 RPM: multiple formats output"
           command: |
-            EXPECTED="rpm-sboms/myapp-1.2.3-1.el8.x86_64.spdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
+            SPDX_FILE="rpm-sboms/myapp-1.2.3-1.el8.x86_64.spdx.json"
+            CDX_FILE="rpm-sboms/myapp-1.2.3-1.el8.x86_64.cdx.json"
+
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${SPDX_FILE} not found"
               ls -la rpm-sboms/ || echo "rpm-sboms/ directory does not exist"
               exit 1
             fi
-            echo "SUCCESS: Found ${EXPECTED}"
+            echo "SUCCESS: Found ${SPDX_FILE}"
 
-            # Verify valid SBOM structure
-            if python3 -c "import json; json.load(open('${EXPECTED}'))" && grep -q "SPDX-2.3" "${EXPECTED}"; then
-              echo "SUCCESS: Valid SPDX SBOM generated"
-            else
-              echo "ERROR: Invalid SBOM"
-              exit 1
-            fi
-
-      # Test el9 RPM with wildcard source
-      - syft-orb/generate_sbom:
-          source: "/tmp/rpms/*el9*.rpm"
-          output_file: rpm-sboms/
-          output_format: spdx-json
-      - run:
-          name: "Verify el9 RPM: wildcard source expansion"
-          command: |
-            EXPECTED="rpm-sboms/myapp-1.2.3-1.el9.x86_64.spdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${CDX_FILE} not found"
               ls -la rpm-sboms/
               exit 1
             fi
-            echo "SUCCESS: Found ${EXPECTED} (wildcard expansion worked)"
+            echo "SUCCESS: Found ${CDX_FILE}"
 
-      # Test el10 RPM with explicit output path
+            # Verify valid SBOM structures
+            if python3 -c "import json; json.load(open('${SPDX_FILE}'))" && grep -q "SPDX-2.3" "${SPDX_FILE}"; then
+              echo "SUCCESS: Valid SPDX SBOM generated"
+            else
+              echo "ERROR: Invalid SPDX SBOM"
+              exit 1
+            fi
+
+            if python3 -c "import json; json.load(open('${CDX_FILE}'))" && grep -q "bomFormat" "${CDX_FILE}"; then
+              echo "SUCCESS: Valid CycloneDX SBOM generated"
+            else
+              echo "ERROR: Invalid CycloneDX SBOM"
+              exit 1
+            fi
+
+      # Test el9 RPM with wildcard source and multiple formats
+      - syft-orb/generate_sbom:
+          source: "/tmp/rpms/*el9*.rpm"
+          output_dir: rpm-sboms
+          output_formats: "spdx-json,cyclonedx-json"
+      - run:
+          name: "Verify el9 RPM: wildcard source expansion with multiple formats"
+          command: |
+            SPDX_FILE="rpm-sboms/myapp-1.2.3-1.el9.x86_64.spdx.json"
+            CDX_FILE="rpm-sboms/myapp-1.2.3-1.el9.x86_64.cdx.json"
+
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${SPDX_FILE} not found"
+              ls -la rpm-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${SPDX_FILE} (wildcard expansion worked)"
+
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${CDX_FILE} not found"
+              ls -la rpm-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${CDX_FILE} (wildcard expansion worked)"
+
+      # Test el10 RPM with three formats
       - syft-orb/generate_sbom:
           source: /tmp/rpms/myapp-1.2.3-1.el10.x86_64.rpm
-          output_file: el10-explicit.spdx.json
-          output_format: spdx-json
+          output_dir: el10-multi
+          output_formats: "spdx-json,cyclonedx-json,syft-json"
       - run:
-          name: "Verify el10 RPM: explicit output path"
+          name: "Verify el10 RPM: three formats"
           command: |
-            if [[ ! -f "el10-explicit.spdx.json" ]]; then
-              echo "ERROR: Expected file el10-explicit.spdx.json not found"
-              exit 1
-            fi
-            echo "SUCCESS: Found el10-explicit.spdx.json"
+            SPDX_FILE="el10-multi/myapp-1.2.3-1.el10.x86_64.spdx.json"
+            CDX_FILE="el10-multi/myapp-1.2.3-1.el10.x86_64.cdx.json"
+            SYFT_FILE="el10-multi/myapp-1.2.3-1.el10.x86_64.syft.json"
 
-      # Test CycloneDX format with RPM
-      - syft-orb/generate_sbom:
-          source: /tmp/rpms/myapp-1.2.3-1.el7.x86_64.rpm
-          output_file: rpm-cdx/
-          output_format: cyclonedx-json
-      - run:
-          name: "Verify RPM with CycloneDX format"
-          command: |
-            EXPECTED="rpm-cdx/myapp-1.2.3-1.el7.x86_64.cdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
-              ls -la rpm-cdx/ || echo "rpm-cdx/ directory does not exist"
-              exit 1
-            fi
-            echo "SUCCESS: Found ${EXPECTED}"
+            for f in "${SPDX_FILE}" "${CDX_FILE}" "${SYFT_FILE}"; do
+              if [[ ! -f "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                ls -la el10-multi/
+                exit 1
+              fi
+              echo "SUCCESS: Found ${f}"
+            done
 
   # Test DEB package handling with fictitious packages
   test-deb-packages:
@@ -394,12 +433,12 @@ jobs:
             echo "Created DEBs:"
             ls -la /tmp/debs/
 
-      # Test focal DEB with auto-generated output
+      # Test focal DEB with single format (backward compatibility)
       - syft-orb/generate_sbom:
           source: /tmp/debs/testpkg_2.0.0-1~focal_amd64.deb
-          output_format: spdx-json
+          output_formats: spdx-json
       - run:
-          name: "Verify focal DEB: auto-generated output and SBOM contents"
+          name: "Verify focal DEB: single format output and SBOM contents"
           command: |
             EXPECTED="sboms/testpkg_2.0.0-1~focal_amd64.spdx.json"
             if [[ ! -f "${EXPECTED}" ]]; then
@@ -439,75 +478,84 @@ jobs:
             fi
             echo "SUCCESS: SBOM contains cataloged binary from extracted DEB"
 
-      # Test jammy DEB with custom directory output
+      # Test jammy DEB with multiple formats
       - syft-orb/generate_sbom:
           source: /tmp/debs/testpkg_2.0.0-1~jammy_amd64.deb
-          output_file: deb-sboms/
-          output_format: spdx-json
+          output_dir: deb-sboms
+          output_formats: "spdx-json,cyclonedx-json"
       - run:
-          name: "Verify jammy DEB: custom directory output"
+          name: "Verify jammy DEB: multiple formats output"
           command: |
-            EXPECTED="deb-sboms/testpkg_2.0.0-1~jammy_amd64.spdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
+            SPDX_FILE="deb-sboms/testpkg_2.0.0-1~jammy_amd64.spdx.json"
+            CDX_FILE="deb-sboms/testpkg_2.0.0-1~jammy_amd64.cdx.json"
+
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${SPDX_FILE} not found"
               ls -la deb-sboms/ || echo "deb-sboms/ directory does not exist"
               exit 1
             fi
-            echo "SUCCESS: Found ${EXPECTED}"
+            echo "SUCCESS: Found ${SPDX_FILE}"
 
-            # Verify valid SBOM structure
-            if python3 -c "import json; json.load(open('${EXPECTED}'))" && grep -q "SPDX-2.3" "${EXPECTED}"; then
-              echo "SUCCESS: Valid SPDX SBOM generated"
-            else
-              echo "ERROR: Invalid SBOM"
-              exit 1
-            fi
-
-      # Test noble DEB with wildcard source
-      - syft-orb/generate_sbom:
-          source: "/tmp/debs/*noble*.deb"
-          output_file: deb-sboms/
-          output_format: spdx-json
-      - run:
-          name: "Verify noble DEB: wildcard source expansion"
-          command: |
-            EXPECTED="deb-sboms/testpkg_2.0.0-1~noble_amd64.spdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${CDX_FILE} not found"
               ls -la deb-sboms/
               exit 1
             fi
-            echo "SUCCESS: Found ${EXPECTED} (wildcard expansion worked)"
+            echo "SUCCESS: Found ${CDX_FILE}"
 
-      # Test DEB with explicit output path
+            # Verify valid SBOM structures
+            if python3 -c "import json; json.load(open('${SPDX_FILE}'))" && grep -q "SPDX-2.3" "${SPDX_FILE}"; then
+              echo "SUCCESS: Valid SPDX SBOM generated"
+            else
+              echo "ERROR: Invalid SPDX SBOM"
+              exit 1
+            fi
+
+      # Test noble DEB with wildcard source and multiple formats
+      - syft-orb/generate_sbom:
+          source: "/tmp/debs/*noble*.deb"
+          output_dir: deb-sboms
+          output_formats: "spdx-json,cyclonedx-json"
+      - run:
+          name: "Verify noble DEB: wildcard source expansion with multiple formats"
+          command: |
+            SPDX_FILE="deb-sboms/testpkg_2.0.0-1~noble_amd64.spdx.json"
+            CDX_FILE="deb-sboms/testpkg_2.0.0-1~noble_amd64.cdx.json"
+
+            if [[ ! -f "${SPDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${SPDX_FILE} not found"
+              ls -la deb-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${SPDX_FILE} (wildcard expansion worked)"
+
+            if [[ ! -f "${CDX_FILE}" ]]; then
+              echo "ERROR: Expected file ${CDX_FILE} not found"
+              ls -la deb-sboms/
+              exit 1
+            fi
+            echo "SUCCESS: Found ${CDX_FILE} (wildcard expansion worked)"
+
+      # Test DEB with three formats
       - syft-orb/generate_sbom:
           source: /tmp/debs/testpkg_2.0.0-1~focal_amd64.deb
-          output_file: focal-explicit.spdx.json
-          output_format: spdx-json
+          output_dir: deb-three
+          output_formats: "spdx-json,cyclonedx-json,syft-json"
       - run:
-          name: "Verify DEB with explicit output path"
+          name: "Verify DEB with three formats"
           command: |
-            if [[ ! -f "focal-explicit.spdx.json" ]]; then
-              echo "ERROR: Expected file focal-explicit.spdx.json not found"
-              exit 1
-            fi
-            echo "SUCCESS: Found focal-explicit.spdx.json"
+            SPDX_FILE="deb-three/testpkg_2.0.0-1~focal_amd64.spdx.json"
+            CDX_FILE="deb-three/testpkg_2.0.0-1~focal_amd64.cdx.json"
+            SYFT_FILE="deb-three/testpkg_2.0.0-1~focal_amd64.syft.json"
 
-      # Test CycloneDX format with DEB
-      - syft-orb/generate_sbom:
-          source: /tmp/debs/testpkg_2.0.0-1~jammy_amd64.deb
-          output_file: deb-cdx/
-          output_format: cyclonedx-json
-      - run:
-          name: "Verify DEB with CycloneDX format"
-          command: |
-            EXPECTED="deb-cdx/testpkg_2.0.0-1~jammy_amd64.cdx.json"
-            if [[ ! -f "${EXPECTED}" ]]; then
-              echo "ERROR: Expected file ${EXPECTED} not found"
-              ls -la deb-cdx/ || echo "deb-cdx/ directory does not exist"
-              exit 1
-            fi
-            echo "SUCCESS: Found ${EXPECTED}"
+            for f in "${SPDX_FILE}" "${CDX_FILE}" "${SYFT_FILE}"; do
+              if [[ ! -f "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                ls -la deb-three/
+                exit 1
+              fi
+              echo "SUCCESS: Found ${f}"
+            done
 
   # Test the sbom job with RPM - uses the job directly
   test-sbom-job-rpm:
@@ -603,34 +651,44 @@ workflows:
       # Test the sbom job
       - test-sbom-job-rpm:
           filters: *filters
+
+      # Test sbom job with default formats (cyclonedx-json,spdx-json)
       - syft-orb/sbom:
-          name: test-sbom-rpm-x86
+          name: test-sbom-rpm-x86-default-formats
           source: "workspace/rpms/testapp-*.el9.x86_64.rpm"
-          output_dir: sboms
+          output_dir: sboms-default
           attach_workspace: true
           persist_to_workspace: true
           log_sboms: true
           requires:
             - test-sbom-job-rpm
           filters: *filters
+
+      # Test sbom job with single format
       - syft-orb/sbom:
-          name: test-sbom-rpm-noarch
+          name: test-sbom-rpm-noarch-single-format
           source: "workspace/rpms/testapp-config-*.noarch.rpm"
-          output_dir: sboms-noarch
+          output_dir: sboms-single
+          output_formats: "spdx-json"
           attach_workspace: true
           persist_to_workspace: true
           log_sboms: true
           requires:
             - test-sbom-job-rpm
           filters: *filters
+
+      # Test sbom job with three formats
       - syft-orb/sbom:
-          name: test-sbom-container
+          name: test-sbom-container-three-formats
           source: "gcr.io/distroless/static:latest"
           output_dir: sboms-container
+          output_formats: "spdx-json,cyclonedx-json,syft-json"
           attach_workspace: false
           persist_to_workspace: false
           log_sboms: true
           filters: *filters
+
+      # Test sbom job with source directory (default formats)
       - syft-orb/sbom:
           name: test-sbom-source
           source: "dir:."
@@ -640,11 +698,11 @@ workflows:
           log_sboms: true
           filters: *filters
 
-      # Test the sbom job with DEB package
+      # Test the sbom job with DEB package (default formats)
       - test-sbom-job-deb:
           filters: *filters
       - syft-orb/sbom:
-          name: test-sbom-deb
+          name: test-sbom-deb-default-formats
           source: "workspace/debs/debapp_*_amd64.deb"
           output_dir: sboms-deb
           attach_workspace: true
@@ -667,10 +725,10 @@ workflows:
             - command-test
             - test-rpm-packages
             - test-deb-packages
-            - test-sbom-rpm-x86
-            - test-sbom-rpm-noarch
-            - test-sbom-container
+            - test-sbom-rpm-x86-default-formats
+            - test-sbom-rpm-noarch-single-format
+            - test-sbom-container-three-formats
             - test-sbom-source
-            - test-sbom-deb
+            - test-sbom-deb-default-formats
           context: orb-publishing
           filters: *release-filters

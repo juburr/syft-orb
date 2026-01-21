@@ -8,8 +8,8 @@ set -o pipefail
 BASE_PATH=$(circleci env subst "${PARAM_BASE_PATH}")
 ENRICH=$(circleci env subst "${PARAM_ENRICH}")
 SOURCE=$(circleci env subst "${PARAM_SOURCE}")
-OUTPUT_FILE=$(circleci env subst "${PARAM_OUTPUT_FILE}")
-OUTPUT_FORMAT=$(circleci env subst "${PARAM_OUTPUT_FORMAT}")
+OUTPUT_DIR=$(circleci env subst "${PARAM_OUTPUT_DIR}")
+OUTPUT_FORMATS=$(circleci env subst "${PARAM_OUTPUT_FORMATS}")
 SCOPE=$(circleci env subst "${PARAM_SCOPE}")
 
 # Print command parameters for debugging purposes.
@@ -19,8 +19,8 @@ echo "  ENRICH: ${ENRICH}"
 echo "  SOURCE: ${SOURCE}"
 echo "  OS_USER: $(whoami 2> /dev/null || true)"
 echo "  OS_USER_GROUPS: $(id -Gn 2> /dev/null || true)"
-echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
-echo "  OUTPUT_FORMAT: ${OUTPUT_FORMAT}"
+echo "  OUTPUT_DIR: ${OUTPUT_DIR}"
+echo "  OUTPUT_FORMATS: ${OUTPUT_FORMATS}"
 echo "  SCOPE: ${SCOPE}"
 echo ""
 
@@ -110,35 +110,29 @@ extract_source_basename() {
   echo "${basename}"
 }
 
-# Generate output path based on output_file parameter mode
-# Arguments: $1 = output_file value, $2 = source, $3 = output_format
+# Generate output path for a given format
+# Arguments: $1 = output_dir value, $2 = source basename, $3 = output_format
 # Output: prints the resolved output file path
 generate_output_path() {
-  local output_file="$1"
-  local source="$2"
+  local output_dir="$1"
+  local source_basename="$2"
   local output_format="$3"
 
   # Get format suffix (default to .json if format not in map)
   local suffix="${FORMAT_SUFFIXES[${output_format}]:-.json}"
 
-  # Mode 1: Empty string - auto-generate in sboms/ directory
-  if [[ -z "${output_file}" ]]; then
-    local basename
-    basename=$(extract_source_basename "${source}")
+  # Extract the basename from source for auto-generated filenames
+  local basename
+  basename=$(extract_source_basename "${source_basename}")
+
+  # Use specified directory or default to sboms/
+  if [[ -z "${output_dir}" ]]; then
     echo "sboms/${basename}${suffix}"
-    return
+  elif [[ "${output_dir}" == */ ]]; then
+    echo "${output_dir}${basename}${suffix}"
+  else
+    echo "${output_dir}/${basename}${suffix}"
   fi
-
-  # Mode 2: Trailing slash - auto-generate in specified directory
-  if [[ "${output_file}" == */ ]]; then
-    local basename
-    basename=$(extract_source_basename "${source}")
-    echo "${output_file}${basename}${suffix}"
-    return
-  fi
-
-  # Mode 3: Explicit filename - use as-is
-  echo "${output_file}"
 }
 
 # Wildcard Expansion for Package Files
@@ -179,27 +173,82 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]] || \
   SOURCE_BASENAME_FOR_OUTPUT="${SOURCE}"
 fi
 
-# Generate output path based on OUTPUT_FILE parameter mode
+# Parse OUTPUT_FORMATS into an array (comma-separated)
 # This must happen after wildcard expansion so we have the resolved source name
-echo "Determining output file path..."
-OUTPUT_FILE=$(generate_output_path "${OUTPUT_FILE}" "${SOURCE_BASENAME_FOR_OUTPUT}" "${OUTPUT_FORMAT}")
-echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
+echo "Parsing output formats..."
+IFS=',' read -ra FORMAT_ARRAY <<< "${OUTPUT_FORMATS}"
 
-# Ensure the output directory exists
-# Automatically create it as a convenience for the caller.
-# This must be done before computing the absolute path with 'realpath'.
-OUTPUT_DIR=$(dirname "${OUTPUT_FILE}")
-if [[ ! -d "${OUTPUT_DIR}" ]]; then
-  echo "  Creating output directory: ${OUTPUT_DIR}"
-  mkdir -p "${OUTPUT_DIR}"
-else
-  echo "  Output directory already exists: ${OUTPUT_DIR}"
+# Validate that we have at least one format
+if [[ ${#FORMAT_ARRAY[@]} -eq 0 ]]; then
+  echo "ERROR: No output formats specified. Please provide at least one format."
+  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}"
+  exit 1
 fi
 
-# Expand SBOM filename to absolute path
-echo "Computing absolute path for the SBOM..."
-OUTPUT_FILE=$(realpath --no-symlinks "${OUTPUT_FILE}")
-echo "  OUTPUT_FILE: ${OUTPUT_FILE}"
+# Validate each format is supported
+INVALID_FORMATS=()
+VALID_FORMATS=()
+for format in "${FORMAT_ARRAY[@]}"; do
+  # Trim whitespace from format
+  format=$(echo "${format}" | xargs)
+
+  # Skip empty strings (e.g., from trailing commas)
+  if [[ -z "${format}" ]]; then
+    continue
+  fi
+
+  # Check if format is in the supported list
+  if [[ -v FORMAT_SUFFIXES["${format}"] ]]; then
+    VALID_FORMATS+=("${format}")
+  else
+    INVALID_FORMATS+=("${format}")
+  fi
+done
+
+# Report any invalid formats
+if [[ ${#INVALID_FORMATS[@]} -gt 0 ]]; then
+  echo "ERROR: Unsupported output format(s) specified:"
+  for fmt in "${INVALID_FORMATS[@]}"; do
+    echo "  - '${fmt}'"
+  done
+  echo ""
+  echo "Supported formats:"
+  for fmt in "${!FORMAT_SUFFIXES[@]}"; do
+    echo "  - ${fmt}"
+  done
+  exit 1
+fi
+
+# Check we still have valid formats after filtering
+if [[ ${#VALID_FORMATS[@]} -eq 0 ]]; then
+  echo "ERROR: No valid output formats specified after parsing."
+  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}"
+  exit 1
+fi
+
+# Replace FORMAT_ARRAY with validated formats
+FORMAT_ARRAY=("${VALID_FORMATS[@]}")
+echo "  Formats to generate: ${FORMAT_ARRAY[*]}"
+echo ""
+
+# Generate output paths for each format and ensure directories exist
+declare -a OUTPUT_PATHS=()
+echo "Determining output file paths..."
+for format in "${FORMAT_ARRAY[@]}"; do
+  output_path=$(generate_output_path "${OUTPUT_DIR}" "${SOURCE_BASENAME_FOR_OUTPUT}" "${format}")
+
+  # Ensure the output directory exists
+  dir_path=$(dirname "${output_path}")
+  if [[ ! -d "${dir_path}" ]]; then
+    echo "  Creating output directory: ${dir_path}"
+    mkdir -p "${dir_path}"
+  fi
+
+  # Expand to absolute path
+  output_path=$(realpath --no-symlinks "${output_path}")
+  OUTPUT_PATHS+=("${format}=${output_path}")
+  echo "  ${format}: ${output_path}"
+done
 echo ""
 
 # RPM Handling
@@ -373,7 +422,12 @@ if [[ -z "${BASE_PATH}" ]]; then
 fi
 
 # Build the syft command arguments
-syft_args=(scan -vv --scope "${SCOPE}" --output "${OUTPUT_FORMAT}" --base-path "${BASE_PATH}")
+syft_args=(scan -vv --scope "${SCOPE}" --base-path "${BASE_PATH}")
+
+# Add output flags for each format
+for output_spec in "${OUTPUT_PATHS[@]}"; do
+  syft_args+=(-o "${output_spec}")
+done
 
 # Conditionally add the --enrich flag
 if [[ -n "${ENRICH}" && "${ENRICH}" != "none" ]]; then
@@ -383,9 +437,10 @@ fi
 # The source is added last and can be a container image or filesystem path.
 syft_args+=("${SOURCE}")
 
-# Generate the SBOM
+# Generate the SBOM(s)
 echo "Scanning with syft..."
-syft "${syft_args[@]}" > "${OUTPUT_FILE}"
+echo "  Command: syft ${syft_args[*]}"
+syft "${syft_args[@]}"
 
 # If the source was an RPM or DEB file, remove the temporary directory
 if [[ -n "${TMP_SCAN_DIR}" ]]; then
@@ -395,4 +450,7 @@ if [[ -n "${TMP_SCAN_DIR}" ]]; then
 fi
 
 echo "Done."
-echo "Syft scan completed successfully. Wrote SBOM to: ${OUTPUT_FILE}"
+echo "Syft scan completed successfully. Generated SBOMs:"
+for output_spec in "${OUTPUT_PATHS[@]}"; do
+  echo "  - ${output_spec#*=}"
+done
