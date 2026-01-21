@@ -1,7 +1,7 @@
 description: |
   Generate Software Bill of Materials (SBOM) for any source: package files
-  (RPM, DEB), container images, directories, or source code. Generates both
-  SPDX and CycloneDX formats and integrates with CircleCI workspaces.
+  (RPM, DEB), container images, directories, or source code. Generates multiple
+  formats simultaneously in a single scan and integrates with CircleCI workspaces.
 
   Output filenames are auto-generated from the source basename with
   format-appropriate suffixes (e.g., myapp-1.2.3-1.el9.x86_64.spdx.json).
@@ -28,7 +28,15 @@ parameters:
   output_dir:
     type: string
     default: "sboms"
-    description: Directory for generated SBOM files (with trailing slash for auto-generation).
+    description: Directory for generated SBOM files.
+
+  output_formats:
+    type: string
+    default: "cyclonedx-json,spdx-json"
+    description: |
+      Comma-separated list of output formats to generate. Syft scans once and generates all formats simultaneously.
+      Examples: "spdx-json" (single), "spdx-json,cyclonedx-json" (multiple)
+      Supported formats: cyclonedx-json, cyclonedx-xml, github-json, purls, spdx-json, spdx-tag-value, syft-json, syft-table, syft-text, template
 
   # Syft Configuration
   syft_version:
@@ -105,20 +113,11 @@ steps:
       caching: true
       version: << parameters.syft_version >>
 
-  # Generate SPDX SBOM
+  # Generate SBOMs in all requested formats (single scan)
   - generate_sbom:
       source: << parameters.source >>
-      output_file: << parameters.output_dir >>/
-      output_format: spdx-json
-      scope: << parameters.scope >>
-      enrich: << parameters.enrich >>
-      base_path: << parameters.base_path >>
-
-  # Generate CycloneDX SBOM
-  - generate_sbom:
-      source: << parameters.source >>
-      output_file: << parameters.output_dir >>/
-      output_format: cyclonedx-json
+      output_dir: << parameters.output_dir >>/
+      output_formats: << parameters.output_formats >>
       scope: << parameters.scope >>
       enrich: << parameters.enrich >>
       base_path: << parameters.base_path >>

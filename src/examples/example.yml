@@ -6,15 +6,16 @@ usage:
   orbs:
     syft: juburr/syft-orb@latest
   jobs:
-    # Example 1: Using the generate_sbom command with auto-generated output
+    # Example 1: Single format with auto-generated output
     # Outputs to: sboms/static-latest.spdx.json
-    command-auto-generate:
+    command-single-format:
       docker:
         - image: cimg/base:current-22.04
       steps:
         - syft/install
         - syft/generate_sbom:
             source: gcr.io/distroless/static:latest
+            output_formats: spdx-json
         # Log a single SBOM file by path
         - syft/log_sbom:
             sbom_path: sboms/static-latest.spdx.json
@@ -22,8 +23,21 @@ usage:
         - syft/log_sbom:
             sbom_dir: sboms
 
-    # Example 2: Using the generate_sbom command with custom directory
-    # Outputs to: artifacts/static-latest.spdx.json
+    # Example 2: Multiple formats in a single scan
+    # Outputs to: sboms/static-latest.spdx.json AND sboms/static-latest.cdx.json
+    command-multi-format:
+      docker:
+        - image: cimg/base:current-22.04
+      steps:
+        - syft/install
+        - syft/generate_sbom:
+            source: gcr.io/distroless/static:latest
+            output_formats: "spdx-json,cyclonedx-json"
+        - syft/log_sbom:
+            sbom_dir: sboms
+
+    # Example 3: Multiple formats with custom output directory
+    # Outputs to: artifacts/static-latest.spdx.json AND artifacts/static-latest.cdx.json
     command-custom-directory:
       docker:
         - image: cimg/base:current-22.04
@@ -31,9 +45,10 @@ usage:
         - syft/install
         - syft/generate_sbom:
             source: gcr.io/distroless/static:latest
-            output_file: artifacts/
+            output_dir: artifacts
+            output_formats: "spdx-json,cyclonedx-json,syft-json"
 
-    # Example 3: Build RPMs and persist to workspace
+    # Example 4: Build RPMs and persist to workspace
     build-rpms:
       docker:
         - image: cimg/base:current-22.04
@@ -51,16 +66,25 @@ usage:
     example-workflow:
       jobs:
         # Command-based examples
-        - command-auto-generate
+        - command-single-format
+        - command-multi-format
         - command-custom-directory
 
         # Job-based example: Source code SBOM
         # Captures dependencies from package.json, go.mod, requirements.txt, etc.
         # that may not be present in compiled/transpiled artifacts.
-        # Generates both SPDX and CycloneDX formats automatically.
+        # Generates both SPDX and CycloneDX formats by default.
         - syft/sbom:
             name: sbom-source
             source: "dir:."
+            attach_workspace: false
+            persist_to_workspace: true
+
+        # Job-based example: Source code SBOM with single format
+        - syft/sbom:
+            name: sbom-source-spdx-only
+            source: "dir:."
+            output_formats: "spdx-json"
             attach_workspace: false
             persist_to_workspace: true
 
@@ -72,10 +96,11 @@ usage:
             requires:
               - build-rpms
 
-        # Job-based example: noarch RPM
+        # Job-based example: noarch RPM with three formats
         - syft/sbom:
             name: sbom-rpm-noarch
             source: "rpms/myapp-config*.noarch.rpm"
+            output_formats: "spdx-json,cyclonedx-json,syft-json"
             requires:
               - build-rpms
 
