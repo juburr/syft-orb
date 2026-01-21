@@ -9,7 +9,7 @@ parameters:
     default: all
     description: Enable package data enrichment from local and online sources,
       to include additional metadata such as licenses, URLs, and more.
-    enum: ["none", "all", "golang", "java", "javascript"]
+    enum: ["none", "all", "golang", "java", "javascript", "python"]
   source:
     type: string
     description: The container image URI, RPM filename, DEB filename, or filesystem directory to scan.
