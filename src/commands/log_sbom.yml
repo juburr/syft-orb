@@ -1,22 +1,33 @@
-description: Prints a generated SBOM to CircleCI output for logging or debugging purposes
+description: Prints generated SBOM(s) to CircleCI output for logging or debugging purposes.
 parameters:
   pretty:
     type: boolean
-    default: false
-    description: If the SBOM format is JSON based, this will pretty print the file using JQ.
+    default: true
+    description: Pretty print JSON-based SBOMs using jq.
+  sbom_dir:
+    type: string
+    default: ""
+    description: |
+      Directory containing SBOM files to log. When provided, logs all SBOM files
+      in the directory with format auto-detected from file extension (.spdx.json,
+      .cdx.json, .cdx.xml, etc.). Mutually exclusive with sbom_path.
   sbom_format:
     type: enum
     default: spdx-json
-    description: Output format of the SBOM. Should allow an array; use a single value enum for now.
+    description: Output format of the SBOM. Only used with sbom_path parameter.
     enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
   sbom_path:
     type: string
-    description: Path to the SBOM file(s). Wildcards are supported to match multiple files, but each must have the same sbom_format.
+    default: ""
+    description: |
+      Path to the SBOM file(s). Wildcards are supported to match multiple files,
+      but each must have the same sbom_format. Mutually exclusive with sbom_dir.
 steps:
   - run:
       name: Log SBOM Contents
       environment:
         PARAM_PRETTY: << parameters.pretty >>
+        PARAM_SBOM_DIR: << parameters.sbom_dir >>
         PARAM_SBOM_FORMAT: << parameters.sbom_format >>
         PARAM_SBOM_PATH: << parameters.sbom_path >>
       shell: /bin/bash

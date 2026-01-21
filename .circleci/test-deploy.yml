@@ -148,6 +148,11 @@ jobs:
             fi
             echo "SUCCESS: Found ${EXPECTED}"
 
+      # Test 7: log_sbom command with sbom_dir parameter (directory mode)
+      - syft-orb/log_sbom:
+          sbom_dir: sboms
+          pretty: true
+
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
     docker:
@@ -504,6 +509,85 @@ jobs:
             fi
             echo "SUCCESS: Found ${EXPECTED}"
 
+  # Test the sbom job with RPM - uses the job directly
+  test-sbom-job-rpm:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - run:
+          name: Install FPM and Go for package creation
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm golang-go
+            sudo gem install fpm
+      - run:
+          name: Create test RPM with Go binary
+          command: |
+            mkdir -p /tmp/pkg-content/usr/bin
+            mkdir -p /tmp/go-src
+            cat > /tmp/go-src/main.go \<< 'GOSRC'
+            package main
+            import "fmt"
+            func main() { fmt.Println("Hello") }
+            GOSRC
+            (cd /tmp/go-src && go build -o /tmp/pkg-content/usr/bin/testapp main.go)
+
+            mkdir -p workspace/rpms
+            fpm -s dir -t rpm -n testapp -v "1.0.0" --iteration "1.el9" \
+              --architecture x86_64 -C /tmp/pkg-content \
+              -p "workspace/rpms/testapp-1.0.0-1.el9.x86_64.rpm" .
+
+            # Also create a noarch RPM
+            mkdir -p /tmp/noarch-content/etc/testapp
+            echo "config=value" > /tmp/noarch-content/etc/testapp/config.conf
+            fpm -s dir -t rpm -n testapp-config -v "1.0.0" --iteration "1" \
+              --architecture noarch -C /tmp/noarch-content \
+              -p "workspace/rpms/testapp-config-1.0.0-1.noarch.rpm" .
+
+            echo "Created RPMs:"
+            ls -la workspace/rpms/
+      - persist_to_workspace:
+          root: .
+          paths:
+            - workspace
+
+  # Test the sbom job with DEB - uses the job directly
+  test-sbom-job-deb:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - run:
+          name: Install FPM and Go for package creation
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y ruby ruby-dev rubygems build-essential golang-go
+            sudo gem install fpm
+      - run:
+          name: Create test DEB with Go binary
+          command: |
+            mkdir -p /tmp/pkg-content/usr/bin
+            mkdir -p /tmp/go-src
+            cat > /tmp/go-src/main.go \<< 'GOSRC'
+            package main
+            import "fmt"
+            func main() { fmt.Println("Hello from DEB") }
+            GOSRC
+            (cd /tmp/go-src && go build -o /tmp/pkg-content/usr/bin/debapp main.go)
+
+            mkdir -p workspace/debs
+            fpm -s dir -t deb -n debapp -v "2.5.0" --iteration "1~jammy" \
+              --architecture amd64 -C /tmp/pkg-content \
+              -p "workspace/debs/debapp_2.5.0-1~jammy_amd64.deb" .
+
+            echo "Created DEBs:"
+            ls -la workspace/debs/
+      - persist_to_workspace:
+          root: .
+          paths:
+            - workspace
+
 workflows:
   test-deploy:
     jobs:
@@ -515,6 +599,61 @@ workflows:
           filters: *filters
       - test-deb-packages:
           filters: *filters
+
+      # Test the sbom job
+      - test-sbom-job-rpm:
+          filters: *filters
+      - syft-orb/sbom:
+          name: test-sbom-rpm-x86
+          source: "workspace/rpms/testapp-*.el9.x86_64.rpm"
+          output_dir: sboms
+          attach_workspace: true
+          persist_to_workspace: true
+          log_sboms: true
+          requires:
+            - test-sbom-job-rpm
+          filters: *filters
+      - syft-orb/sbom:
+          name: test-sbom-rpm-noarch
+          source: "workspace/rpms/testapp-config-*.noarch.rpm"
+          output_dir: sboms-noarch
+          attach_workspace: true
+          persist_to_workspace: true
+          log_sboms: true
+          requires:
+            - test-sbom-job-rpm
+          filters: *filters
+      - syft-orb/sbom:
+          name: test-sbom-container
+          source: "gcr.io/distroless/static:latest"
+          output_dir: sboms-container
+          attach_workspace: false
+          persist_to_workspace: false
+          log_sboms: true
+          filters: *filters
+      - syft-orb/sbom:
+          name: test-sbom-source
+          source: "dir:."
+          output_dir: sboms-source
+          attach_workspace: false
+          persist_to_workspace: false
+          log_sboms: true
+          filters: *filters
+
+      # Test the sbom job with DEB package
+      - test-sbom-job-deb:
+          filters: *filters
+      - syft-orb/sbom:
+          name: test-sbom-deb
+          source: "workspace/debs/debapp_*_amd64.deb"
+          output_dir: sboms-deb
+          attach_workspace: true
+          persist_to_workspace: true
+          log_sboms: true
+          requires:
+            - test-sbom-job-deb
+          filters: *filters
+
       # The orb must be re-packed for publishing, and saved to the workspace.
       - orb-tools/pack:
           filters: *release-filters
@@ -528,5 +667,10 @@ workflows:
             - command-test
             - test-rpm-packages
             - test-deb-packages
+            - test-sbom-rpm-x86
+            - test-sbom-rpm-noarch
+            - test-sbom-container
+            - test-sbom-source
+            - test-sbom-deb
           context: orb-publishing
           filters: *release-filters
