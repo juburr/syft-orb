@@ -70,9 +70,9 @@ if [[ -n "${SBOM_DIR}" ]]; then
   ls -la "${SBOM_DIR}/"
   echo ""
 
-  # Find and log all SBOM files (JSON and XML)
+  # Find and log all SBOM files produced by generate_sbom
   found_files=0
-  for sbom in "${SBOM_DIR}"/*.spdx.json "${SBOM_DIR}"/*.cdx.json "${SBOM_DIR}"/*.syft.json "${SBOM_DIR}"/*.github.json "${SBOM_DIR}"/*.cdx.xml "${SBOM_DIR}"/*.spdx; do
+  for sbom in "${SBOM_DIR}"/*.spdx.json "${SBOM_DIR}"/*.cdx.json "${SBOM_DIR}"/*.syft.json "${SBOM_DIR}"/*.github.json "${SBOM_DIR}"/*.cdx.xml "${SBOM_DIR}"/*.spdx "${SBOM_DIR}"/*.syft.txt "${SBOM_DIR}"/*.purls.txt; do
     if [[ -f "$sbom" ]]; then
       found_files=$((found_files + 1))
       if is_json_file "$sbom"; then

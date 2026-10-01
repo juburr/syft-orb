@@ -41,19 +41,19 @@ parameters:
   # Syft Configuration
   syft_version:
     type: string
-    default: "1.40.1"
+    default: "1.52.0"
     description: Syft version to install.
 
   scope:
     type: enum
     default: squashed
-    enum: ["squashed", "all-layers"]
+    enum: ["squashed", "all-layers", "deep-squashed"]
     description: Layer selection for container image scanning.
 
   enrich:
     type: enum
     default: all
-    enum: ["none", "all", "golang", "java", "javascript", "python"]
+    enum: ["none", "all", "golang", "java", "javascript", "python", "vcpkg"]
     description: Package data enrichment from local and online sources.
 
   base_path:
