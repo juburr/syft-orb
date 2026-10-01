@@ -35,7 +35,9 @@ runpkg() {
   if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then sudo "$@"; else "$@"; fi
 }
 
-# Format suffix mapping for auto-generated output filenames
+# Format suffix mapping for auto-generated output filenames.
+# Directory logging in log_sbom.sh follows these suffixes. template uses a
+# generic .txt suffix, so log_sbom only prints template output via sbom_path.
 declare -A FORMAT_SUFFIXES=(
   ["spdx-json"]=".spdx.json"
   ["cyclonedx-json"]=".cdx.json"
