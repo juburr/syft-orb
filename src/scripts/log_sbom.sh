@@ -70,17 +70,30 @@ if [[ -n "${SBOM_DIR}" ]]; then
   ls -la "${SBOM_DIR}/"
   echo ""
 
-  # Find and log all SBOM files (JSON and XML)
+  # Suffixes match generate_sbom.sh. template writes a generic .txt file, so it is
+  # only logged when the caller passes sbom_path.
+  sbom_suffixes=(
+    ".spdx.json"
+    ".cdx.json"
+    ".syft.json"
+    ".github.json"
+    ".cdx.xml"
+    ".spdx"
+    ".syft.txt"
+    ".purls.txt"
+  )
   found_files=0
-  for sbom in "${SBOM_DIR}"/*.spdx.json "${SBOM_DIR}"/*.cdx.json "${SBOM_DIR}"/*.syft.json "${SBOM_DIR}"/*.github.json "${SBOM_DIR}"/*.cdx.xml "${SBOM_DIR}"/*.spdx; do
-    if [[ -f "$sbom" ]]; then
-      found_files=$((found_files + 1))
-      if is_json_file "$sbom"; then
-        log_sbom_file "$sbom" "true"
-      else
-        log_sbom_file "$sbom" "false"
+  for suffix in "${sbom_suffixes[@]}"; do
+    for sbom in "${SBOM_DIR}"/*"${suffix}"; do
+      if [[ -f "$sbom" ]]; then
+        found_files=$((found_files + 1))
+        if is_json_file "$sbom"; then
+          log_sbom_file "$sbom" "true"
+        else
+          log_sbom_file "$sbom" "false"
+        fi
       fi
-    fi
+    done
   done
 
   if [[ $found_files -eq 0 ]]; then

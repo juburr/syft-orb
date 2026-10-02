@@ -9,7 +9,7 @@ parameters:
     default: all
     description: Enable package data enrichment from local and online sources,
       to include additional metadata such as licenses, URLs, and more.
-    enum: ["none", "all", "golang", "java", "javascript", "python"]
+    enum: ["none", "all", "golang", "java", "javascript", "python", "vcpkg"]
   source:
     type: string
     description: The container image URI, RPM filename, DEB filename, or filesystem directory to scan.
@@ -32,7 +32,7 @@ parameters:
     type: enum
     default: squashed
     description: Selection of layers to catalog.
-    enum: ["squashed", "all-layers"]
+    enum: ["squashed", "all-layers", "deep-squashed"]
 steps:
   - run:
       name: Generate SBOM
