@@ -42,6 +42,24 @@ The same parameter is available on the `syft/sbom` job.
 >     verify_checksums: known_versions
 > ```
 
+### Supported platforms
+The installer detects the executor's platform with `uname` and downloads the matching Syft build:
+
+| `uname -m` | Syft build |
+| --- | --- |
+| `x86_64` | `linux_amd64` |
+| `aarch64` / `arm64` | `linux_arm64` |
+
+Any other architecture, or a non-Linux executor, is a hard error. Checksums are recorded per version and architecture; Linux arm64 builds exist from Syft 0.28.0 onward. The install cache key includes the architecture, so amd64 and arm64 jobs never share a cached binary.
+
+To run the `syft/sbom` job on arm64, pick an Arm resource class (the default `cimg/base` image is multi-arch):
+
+```yaml
+- syft/sbom:
+    source: "dir:."
+    resource_class: arm.medium
+```
+
 ## Quick Start with the SBOM Job
 The simplest way to generate SBOMs is using the `syft/sbom` job, which handles installation and generation in one step. By default, it produces both SPDX and CycloneDX formats:
 
