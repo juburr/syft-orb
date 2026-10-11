@@ -25,7 +25,7 @@ steps:
       condition: << parameters.caching >>
       steps:
         - restore_cache:
-            key: syft-cache-<< parameters.version >>
+            key: syft-cache-{{ arch }}-<< parameters.version >>
   - run:
       name: Install Syft
       environment:
@@ -38,7 +38,7 @@ steps:
       condition: << parameters.caching >>
       steps:
         - save_cache:
-            key: syft-cache-<< parameters.version >>
+            key: syft-cache-{{ arch }}-<< parameters.version >>
             paths:
               - syft.tar.gz
   - run:
