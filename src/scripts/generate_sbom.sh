@@ -113,7 +113,7 @@ extract_source_basename() {
 
   # RPM file: strip .rpm extension
   if [[ "${source}" == *.rpm ]] || [[ "${source}" == *.RPM ]]; then
-    basename=$(basename "${source}")
+    basename=$(basename -- "${source}")
     basename="${basename%.rpm}"
     basename="${basename%.RPM}"
     echo "${basename}"
@@ -122,7 +122,7 @@ extract_source_basename() {
 
   # DEB file: strip .deb extension
   if [[ "${source}" == *.deb ]] || [[ "${source}" == *.DEB ]]; then
-    basename=$(basename "${source}")
+    basename=$(basename -- "${source}")
     basename="${basename%.deb}"
     basename="${basename%.DEB}"
     echo "${basename}"
@@ -148,18 +148,24 @@ extract_source_basename() {
     return
   fi
 
-  # Directory: use basename (handle "." specially)
-  basename=$(basename "${source}")
-  if [[ "${basename}" == "." ]]; then
-    # Use parent directory name or "project" as fallback
+  # Directory or file: strip the dir:/file: scheme, if any, then use the
+  # basename ("." , ".." and "/" resolve to the directory's own name, or "project")
+  local path="${source}"
+  case "${source}" in
+    dir:*) path="${source#dir:}" ;;
+    file:*) path="${source#file:}" ;;
+  esac
+  basename=$(basename -- "${path}")
+  if [[ "${basename}" == "." || "${basename}" == ".." || "${basename}" == "/" ]]; then
+    # Use the directory's own name or "project" as fallback. cd's output is
+    # discarded because it prints the resolved path when CDPATH applies.
     local parent_dir
-    parent_dir=$(cd "${source}" 2>/dev/null && basename "$(pwd)")
+    parent_dir=$(cd -- "${path}" >/dev/null 2>&1 && basename -- "$(pwd)")
     if [[ -n "${parent_dir}" && "${parent_dir}" != "/" ]]; then
-      echo "${parent_dir}"
+      basename="${parent_dir}"
     else
-      echo "project"
+      basename="project"
     fi
-    return
   fi
 
   echo "${basename}"
@@ -189,6 +195,16 @@ generate_output_path() {
     echo "${output_dir}/${basename}${suffix}"
   fi
 }
+
+# A file: scheme on an RPM or DEB is redundant: drop it so the package is
+# expanded, named and extracted like a plain path.
+case "${SOURCE}" in
+  file:*.rpm|file:*.RPM|file:*.deb|file:*.DEB) SOURCE="${SOURCE#file:}" ;;
+esac
+# A package path starting with "-" would be parsed as an option by dpkg-deb.
+case "${SOURCE}" in
+  -*.rpm|-*.RPM|-*.deb|-*.DEB) SOURCE="./${SOURCE}" ;;
+esac
 
 # Wildcard Expansion for Package Files
 #

@@ -83,6 +83,8 @@ if [[ -n "${SBOM_DIR}" ]]; then
     ".purls.txt"
   )
   found_files=0
+  # Include hidden files, e.g. the SBOM generated for a dir:.venv source.
+  shopt -s dotglob
   for suffix in "${sbom_suffixes[@]}"; do
     for sbom in "${SBOM_DIR}"/*"${suffix}"; do
       if [[ -f "$sbom" ]]; then
