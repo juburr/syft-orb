@@ -4,6 +4,23 @@ parameters:
     type: string
     default: ""
     description: Override the default base path for SBOM generation. The orb automatically sets this if left blank.
+  config:
+    type: string
+    default: ""
+    description: |
+      Path to a syft configuration file, passed as --config. Relative paths are resolved against the working directory.
+      Non-empty exclude and select_catalogers parameters replace the same keys in the file. Note that syft also loads
+      .syft.yaml from the working directory on its own when no config is given. RPM and DEB sources are scanned from
+      a temporary extraction directory, so use absolute paths for path-valued settings inside the file
+      (e.g. format.template.path) when scanning packages.
+  exclude:
+    type: string
+    default: ""
+    description: |
+      Comma- or newline-separated glob patterns to exclude from the scan, each passed to syft as --exclude.
+      For dir: and file: sources and extracted RPM/DEB packages, patterns are relative to the scan root and must
+      start with "./", "*/" or "**/", e.g. "./target/**,**/node_modules/**". For container images, patterns match
+      absolute paths inside the image, e.g. "/usr/share/doc/**". Commas inside {a,b} alternations are preserved.
   enrich:
     type: enum
     default: all
@@ -33,15 +50,26 @@ parameters:
     default: squashed
     description: Selection of layers to catalog.
     enum: ["squashed", "all-layers", "deep-squashed"]
+  select_catalogers:
+    type: string
+    default: ""
+    description: |
+      Passed to syft --select-catalogers, adjusting the default cataloger set for the source type. Comma-separated:
+      "+name" adds a cataloger, "-name" or "-tag" removes catalogers, and an unprefixed tag (e.g. "rust") keeps only
+      the default catalogers with that tag. Unprefixed cataloger names are rejected by syft. To replace the default
+      set itself, use default-catalogers in a config file. See "syft cataloger list" for names and tags.
 steps:
   - run:
       name: Generate SBOM
       environment:
         PARAM_BASE_PATH: << parameters.base_path >>
+        PARAM_CONFIG: << parameters.config >>
         PARAM_ENRICH: << parameters.enrich >>
+        PARAM_EXCLUDE: << parameters.exclude >>
         PARAM_SOURCE: << parameters.source >>
         PARAM_OUTPUT_DIR: << parameters.output_dir >>
         PARAM_OUTPUT_FORMATS: << parameters.output_formats >>
         PARAM_SCOPE: << parameters.scope >>
+        PARAM_SELECT_CATALOGERS: << parameters.select_catalogers >>
       shell: /bin/bash
       command: << include(scripts/generate_sbom.sh) >>
