@@ -148,6 +148,10 @@ generate_output_path() {
 case "${SOURCE}" in
   file:*.rpm|file:*.RPM|file:*.deb|file:*.DEB) SOURCE="${SOURCE#file:}" ;;
 esac
+# A package path starting with "-" would be parsed as an option by dpkg-deb.
+case "${SOURCE}" in
+  -*.rpm|-*.RPM|-*.deb|-*.DEB) SOURCE="./${SOURCE}" ;;
+esac
 
 # Wildcard Expansion for Package Files
 #
