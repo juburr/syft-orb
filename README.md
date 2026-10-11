@@ -74,7 +74,7 @@ For Debian packages, the orb extracts contents using `dpkg-deb` before scanning,
 ## Info for Security Teams
 
 ### Required external access
-Hosts below were determined from the Syft v1.52.0 source (the orb's default version). The Syft, GitHub, registry and package-ecosystem endpoints listed use outbound HTTPS (port 443); distribution package mirrors (see below) use whatever scheme the executor's package sources specify, which is often plain HTTP.
+Hosts below were determined from the Syft v1.52.0 source (the orb's default version). The default Syft, GitHub, registry and package-ecosystem endpoints listed use outbound HTTPS (port 443). Endpoints you configure yourself use whatever scheme and port they specify: a custom `GOPROXY` or Syft config URL, git registries declared in `vcpkg-configuration.json` (which may use SSH, e.g. `git@host:org/repo`), and distribution package mirrors (see below, often plain HTTP).
 
 **Installing Syft** (`syft/install`, also run by the `syft/sbom` job). Skipped on a CircleCI cache hit.
 
