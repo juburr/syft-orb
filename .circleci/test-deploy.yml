@@ -473,6 +473,155 @@ jobs:
               echo "SUCCESS: Found ${f}"
             done
 
+  # Test exclude, config and select_catalogers on a fixture resembling a Rust + JS monorepo.
+  test-scope-control:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - syft-orb/install
+      - run:
+          name: Create fixture monorepo and helpers
+          command: |
+            M=/tmp/scope-fixture/mono
+            mkdir -p "${M}/web/node_modules/native-dep" "${M}/ref/upstream" "${M}/target/package/demo-0.1.0"
+
+            cargo_lock() {
+              printf 'version = 3\n\n[[package]]\nname = "%s"\nversion = "%s"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n' "$1" "$2"
+            }
+            npm_lock() {
+              printf '{"name":"%s","version":"1.0.0","lockfileVersion":3,"packages":{"":{"name":"%s","version":"1.0.0"},"node_modules/%s":{"version":"%s"}}}\n' "$1" "$1" "$2" "$3"
+            }
+            cargo_lock itoa 1.0.11 > "${M}/Cargo.lock"
+            cargo_lock target-only-crate 0.0.1 > "${M}/target/package/demo-0.1.0/Cargo.lock"
+            npm_lock web lodash 4.17.21 > "${M}/web/package-lock.json"
+            # syft already skips JS lockfiles under node_modules, but not other ecosystems'
+            # manifests, e.g. the Cargo.lock shipped by native (napi-rs) npm packages.
+            cargo_lock nested-native-crate 9.9.9 > "${M}/web/node_modules/native-dep/Cargo.lock"
+            npm_lock upstream ref-only-pkg 1.2.3 > "${M}/ref/upstream/package-lock.json"
+            find /tmp/scope-fixture -type f
+
+            # DEB with a vendored lockfile, to check a relative config path survives the extraction cd
+            P=/tmp/scope-fixture/debroot
+            mkdir -p "${P}/DEBIAN" "${P}/opt/demo/vendor"
+            printf 'Package: scopedemo\nVersion: 1.0.0\nArchitecture: all\nMaintainer: test <test@example.com>\nDescription: scope test\n' > "${P}/DEBIAN/control"
+            cargo_lock deb-crate 1.0.0 > "${P}/opt/demo/Cargo.lock"
+            npm_lock vendor deb-vendored 2.0.0 > "${P}/opt/demo/vendor/package-lock.json"
+            dpkg-deb --build "${P}" /tmp/scope-fixture/scopedemo_1.0.0_all.deb
+
+            printf 'exclude:\n  - "./opt/demo/vendor/**"\n' > deb-scope.yaml
+            printf 'exclude:\n  - "./target/**"\n  - "**/node_modules/**"\n  - "./ref/**"\nselect-catalogers:\n  - "-javascript-lock-cataloger"\n' > mono-scope.yaml
+
+            # Usage: assert_pkgs <syft-json> present|absent <name>...
+            printf '%s\n' \
+              'assert_pkgs() {' \
+              '  local file="$1" mode="$2"; shift 2' \
+              '  local names; names=$(jq -r ".artifacts[].name" "${file}")' \
+              '  for n in "$@"; do' \
+              '    if echo "${names}" | grep -qx "${n}"; then found=present; else found=absent; fi' \
+              '    if [[ "${found}" != "${mode}" ]]; then' \
+              '      echo "ERROR: expected ${n} to be ${mode} in ${file}; packages found:"; echo "${names}"; exit 1' \
+              '    fi' \
+              '    echo "  OK: ${n} ${mode}"' \
+              '  done' \
+              '}' > /tmp/scope-fixture/assert.sh
+
+      # Baseline: every fixture package is visible without exclusions
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-baseline
+          output_formats: syft-json
+          enrich: none
+      - run:
+          name: "Verify baseline sees all fixture packages"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-baseline/mono.syft.json present itoa lodash target-only-crate nested-native-crate ref-only-pkg
+
+      # Comma-separated exclusions with surrounding whitespace
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-exclude
+          output_formats: syft-json
+          enrich: none
+          exclude: "./target/** , **/node_modules/** , ./ref/**"
+      - run:
+          name: "Verify comma-separated exclusions"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-exclude/mono.syft.json present itoa lodash
+            assert_pkgs scope-exclude/mono.syft.json absent target-only-crate nested-native-crate ref-only-pkg
+
+      # Brace alternation must not be split on its inner comma
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-braces
+          output_formats: syft-json
+          enrich: none
+          exclude: "./{target,ref}/**,**/node_modules"
+      - run:
+          name: "Verify brace alternation in exclusions"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-braces/mono.syft.json present itoa lodash
+            assert_pkgs scope-braces/mono.syft.json absent target-only-crate nested-native-crate ref-only-pkg
+
+      # Config file (relative path) providing exclusions and cataloger selection
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-config
+          output_formats: syft-json
+          enrich: none
+          config: mono-scope.yaml
+      - run:
+          name: "Verify config file exclusions and cataloger selection"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-config/mono.syft.json present itoa
+            assert_pkgs scope-config/mono.syft.json absent lodash target-only-crate nested-native-crate ref-only-pkg
+
+      # select_catalogers parameter on its own
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-catalogers
+          output_formats: syft-json
+          enrich: none
+          select_catalogers: "-rust-cargo-lock-cataloger"
+      - run:
+          name: "Verify select_catalogers"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-catalogers/mono.syft.json present lodash
+            assert_pkgs scope-catalogers/mono.syft.json absent itoa target-only-crate
+
+      # An unprefixed tag keeps only the default catalogers carrying that tag
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-catalog-tag
+          output_formats: syft-json
+          enrich: none
+          select_catalogers: "rust"
+      - run:
+          name: "Verify select_catalogers tag sub-selection"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-catalog-tag/mono.syft.json present itoa
+            assert_pkgs scope-catalog-tag/mono.syft.json absent lodash ref-only-pkg
+
+      # Relative config path with a DEB source, which is scanned from a temporary directory
+      - syft-orb/generate_sbom:
+          source: /tmp/scope-fixture/scopedemo_1.0.0_all.deb
+          output_dir: scope-deb
+          output_formats: syft-json
+          enrich: none
+          config: deb-scope.yaml
+      - run:
+          name: "Verify relative config path with a DEB source"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-deb/scopedemo_1.0.0_all.syft.json present deb-crate
+            assert_pkgs scope-deb/scopedemo_1.0.0_all.syft.json absent deb-vendored
+
   # Test DEB package handling with fictitious packages
   test-deb-packages:
     docker:
@@ -1051,6 +1200,8 @@ workflows:
           filters: *filters
       - test-rpm-packages:
           filters: *filters
+      - test-scope-control:
+          filters: *filters
       - test-deb-packages:
           filters: *filters
       - test-cargo-auditable:
@@ -1106,6 +1257,18 @@ workflows:
           log_sboms: true
           filters: *filters
 
+      # Test sbom job with scope control parameters
+      - syft-orb/sbom:
+          name: test-sbom-source-scoped
+          source: "dir:."
+          output_dir: sboms-source-scoped
+          exclude: "./.circleci/**,**/node_modules/**"
+          select_catalogers: "-file"
+          attach_workspace: false
+          persist_to_workspace: false
+          log_sboms: false
+          filters: *filters
+
       # Test the sbom job with DEB package (default formats)
       - test-sbom-job-deb:
           filters: *filters
@@ -1136,12 +1299,14 @@ workflows:
             - test-install-platform-mapping
             - test-sbom-container-arm64
             - test-rpm-packages
+            - test-scope-control
             - test-deb-packages
             - test-cargo-auditable
             - test-sbom-rpm-x86-default-formats
             - test-sbom-rpm-noarch-single-format
             - test-sbom-container-three-formats
             - test-sbom-source
+            - test-sbom-source-scoped
             - test-sbom-deb-default-formats
           context: orb-publishing
           filters: *release-filters

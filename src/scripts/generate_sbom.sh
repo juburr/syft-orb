@@ -11,6 +11,10 @@ SOURCE=$(circleci env subst "${PARAM_SOURCE}")
 OUTPUT_DIR=$(circleci env subst "${PARAM_OUTPUT_DIR}")
 OUTPUT_FORMATS=$(circleci env subst "${PARAM_OUTPUT_FORMATS}")
 SCOPE=$(circleci env subst "${PARAM_SCOPE}")
+CONFIG=$(circleci env subst "${PARAM_CONFIG}")
+EXCLUDE=$(circleci env subst "${PARAM_EXCLUDE}")
+# Passed via stdin: values like "-file" would otherwise be parsed as CLI flags.
+SELECT_CATALOGERS=$(printf '%s' "${PARAM_SELECT_CATALOGERS}" | circleci env subst)
 
 # Print command parameters for debugging purposes.
 echo "Running Syft scanner to generate an SBOM with parameters:"
@@ -22,6 +26,9 @@ echo "  OS_USER_GROUPS: $(id -Gn 2> /dev/null || true)"
 echo "  OUTPUT_DIR: ${OUTPUT_DIR}"
 echo "  OUTPUT_FORMATS: ${OUTPUT_FORMATS}"
 echo "  SCOPE: ${SCOPE}"
+echo "  CONFIG: ${CONFIG}"
+echo "  EXCLUDE: ${EXCLUDE}"
+echo "  SELECT_CATALOGERS: ${SELECT_CATALOGERS}"
 echo ""
 
 # Ensure Syft exists
@@ -34,6 +41,52 @@ fi
 runpkg() {
   if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then sudo "$@"; else "$@"; fi
 }
+
+# Split a comma- or newline-separated list of glob patterns into EXCLUDE_PATTERNS.
+# Commas inside {...} are kept, so doublestar alternations such as
+# "**/{target,dist}/**" stay intact. Entries are trimmed; empty entries are dropped.
+# Arguments: $1 = pattern list
+EXCLUDE_PATTERNS=()
+parse_exclude_patterns() {
+  local input="$1" current="" char depth=0 i
+  for (( i = 0; i <= ${#input}; i++ )); do
+    char="${input:i:1}"
+    if [[ "${char}" == "{" ]]; then
+      depth=$((depth + 1))
+    elif [[ "${char}" == "}" && ${depth} -gt 0 ]]; then
+      depth=$((depth - 1))
+    fi
+    if [[ ${i} -eq ${#input} || "${char}" == $'\n' || ( "${char}" == "," && ${depth} -eq 0 ) ]]; then
+      current="${current#"${current%%[![:space:]]*}"}"
+      current="${current%"${current##*[![:space:]]}"}"
+      if [[ -n "${current}" ]]; then
+        EXCLUDE_PATTERNS+=("${current}")
+      fi
+      current=""
+    else
+      current+="${char}"
+    fi
+  done
+}
+
+if [[ -n "${EXCLUDE}" ]]; then
+  parse_exclude_patterns "${EXCLUDE}"
+  echo "Exclude patterns:"
+  printf '  - %s\n' "${EXCLUDE_PATTERNS[@]}"
+  echo ""
+fi
+
+# Resolve the config file up front: RPM/DEB sources are scanned from a temporary
+# directory, which would otherwise break a relative path.
+if [[ -n "${CONFIG}" ]]; then
+  if [[ ! -f "${CONFIG}" ]]; then
+    echo "ERROR: syft config file not found: ${CONFIG}"
+    exit 1
+  fi
+  CONFIG=$(realpath "${CONFIG}")
+  echo "Using syft config file: ${CONFIG}"
+  echo ""
+fi
 
 # Format suffix mapping for auto-generated output filenames.
 # Directory logging in log_sbom.sh follows these suffixes. template uses a
@@ -450,6 +503,18 @@ done
 # Conditionally add the --enrich flag
 if [[ -n "${ENRICH}" && "${ENRICH}" != "none" ]]; then
   syft_args+=(--enrich "${ENRICH}")
+fi
+
+# Scope control: config file, exclusions, and cataloger selection. Flags given
+# here take precedence over the same settings in the config file.
+if [[ -n "${CONFIG}" ]]; then
+  syft_args+=(--config "${CONFIG}")
+fi
+for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+  syft_args+=(--exclude "${pattern}")
+done
+if [[ -n "${SELECT_CATALOGERS}" ]]; then
+  syft_args+=(--select-catalogers "${SELECT_CATALOGERS}")
 fi
 
 # The source is added last and can be a container image or filesystem path.
