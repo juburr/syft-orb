@@ -104,18 +104,21 @@ extract_source_basename() {
   esac
   basename=$(basename -- "${path}")
   if [[ "${basename}" == "." || "${basename}" == ".." || "${basename}" == "/" ]]; then
-    # Use the directory's own name or "project" as fallback
+    # Use the directory's own name or "project" as fallback. cd's output is
+    # discarded because it prints the resolved path when CDPATH applies.
     local parent_dir
-    parent_dir=$(cd -- "${path}" 2>/dev/null && basename -- "$(pwd)")
+    parent_dir=$(cd -- "${path}" >/dev/null 2>&1 && basename -- "$(pwd)")
     if [[ -n "${parent_dir}" && "${parent_dir}" != "/" ]]; then
-      echo "${parent_dir}"
+      basename="${parent_dir}"
     else
-      echo "project"
+      basename="project"
     fi
-    return
   fi
 
-  echo "${basename}"
+  # Drop leading dots (e.g. dir:.venv) so the SBOM isn't a hidden file, which
+  # log_sbom's directory mode would skip.
+  basename="${basename#"${basename%%[!.]*}"}"
+  echo "${basename:-project}"
 }
 
 # Generate output path for a given format
