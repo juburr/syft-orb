@@ -90,6 +90,19 @@ Generate SBOMs for container images using the `generate_sbom` command. Output fi
 
 This produces `sboms/customapp-1.0.0.spdx.json` and `sboms/customapp-1.0.0.cdx.json`.
 
+## Rust Binaries (cargo-auditable)
+Binaries built with [`cargo auditable build`](https://github.com/rust-secure-code/cargo-auditable) embed their resolved crate list. Syft's `cargo-auditable-binary-cataloger` reads it with the default settings for `file:`, `dir:` and container image sources, so no extra parameters are needed:
+
+```yaml
+- syft/generate_sbom:
+    source: file:target/release/myapp
+    output_formats: "spdx-json,cyclonedx-json"
+- syft/generate_sbom:
+    source: ghcr.io/myorganization/myapp:1.0.0
+```
+
+A binary built with plain `cargo build` carries no dependency data, so its SBOM will not list any crates; scan the `Cargo.lock` with a `dir:` source instead.
+
 ## RPM SBOMs
 For RPM packages, this orb enhances scanning by unpacking the RPM contents using `rpm2archive`. This approach produces more comprehensive results by scanning individual files rather than treating the RPM as a single unit, often revealing dependencies and vulnerabilities that would otherwise remain undetected.
 
