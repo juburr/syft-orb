@@ -115,12 +115,7 @@ extract_source_basename() {
     fi
   fi
 
-  # Replace leading dots with underscores (e.g. dir:.venv -> _venv) so the SBOM
-  # isn't a hidden file, which log_sbom's directory mode would skip, while still
-  # differing from the output for a plain "venv" source.
-  local dots="${basename%%[!.]*}"
-  basename="${dots//./_}${basename#"${dots}"}"
-  echo "${basename:-project}"
+  echo "${basename}"
 }
 
 # Generate output path for a given format
@@ -147,6 +142,12 @@ generate_output_path() {
     echo "${output_dir}/${basename}${suffix}"
   fi
 }
+
+# A file: scheme on an RPM or DEB is redundant: drop it so the package is
+# expanded, named and extracted like a plain path.
+case "${SOURCE}" in
+  file:*.rpm|file:*.RPM|file:*.deb|file:*.DEB) SOURCE="${SOURCE#file:}" ;;
+esac
 
 # Wildcard Expansion for Package Files
 #

@@ -225,13 +225,42 @@ jobs:
             check "dir:.." names
             check "dir:-s" "-s"
             check "file:--help" "--help"
-            check "dir:.venv" _venv
-            check "file:.env" _env
-            check "file:env" env
+            check "dir:.venv" .venv
+            check "file:_env" _env
             CDPATH=/tmp/names check "dir:myrepo/." myrepo
             check "file:target/release/app" app
             check "ghcr.io/org/app:1.0.0" app-1.0.0
             check "./rpms/app-1.0-1.el9.x86_64.rpm" app-1.0-1.el9.x86_64
+      - run:
+          name: "Verify log_sbom directory mode includes hidden SBOM files"
+          command: |
+            mkdir -p hidden-logs
+            cp scheme-names/README.md.spdx.json hidden-logs/.venv.spdx.json
+            PARAM_PRETTY=false PARAM_SBOM_DIR=hidden-logs PARAM_SBOM_FORMAT=spdx-json PARAM_SBOM_PATH="" \
+              bash src/scripts/log_sbom.sh > hidden-logs.out 2>&1
+            if ! grep -q "Logged 1 SBOM file(s)" hidden-logs.out; then
+              cat hidden-logs.out
+              echo "ERROR: hidden SBOM file was not logged"
+              exit 1
+            fi
+            echo "SUCCESS: hidden SBOM file logged"
+
+      # Test 9: a file: scheme on an RPM is handled like a plain path
+      - syft-orb/generate_sbom:
+          source: "file:/tmp/rpm/syft*_linux_amd64.rpm"
+          output_dir: rpm-file-scheme
+          output_formats: spdx-json
+          enrich: none
+      - run:
+          name: "Verify file: scheme RPM source"
+          command: |
+            EXPECTED="rpm-file-scheme/syft_1.24.0_linux_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la rpm-file-scheme/ || true
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
 
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
