@@ -44,6 +44,14 @@ parameters:
     default: "1.52.0"
     description: Syft version to install.
 
+  verify_checksums:
+    type: enum
+    default: strict
+    enum: ["false", "known_versions", "strict"]
+    description: |
+      SHA-512 checksum verification of the downloaded Syft executable. "strict" fails if syft_version has
+      no checksum known to this orb; "known_versions" and "false" are explicit opt-outs.
+
   scope:
     type: enum
     default: squashed
@@ -132,6 +140,7 @@ steps:
   - install:
       caching: true
       version: << parameters.syft_version >>
+      verify_checksums: << parameters.verify_checksums >>
 
   # Generate SBOMs in all requested formats (single scan)
   - generate_sbom:
