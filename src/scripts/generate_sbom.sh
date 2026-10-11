@@ -500,8 +500,9 @@ for output_spec in "${OUTPUT_PATHS[@]}"; do
   syft_args+=(-o "${output_spec}")
 done
 
-# Conditionally add the --enrich flag
-if [[ -n "${ENRICH}" && "${ENRICH}" != "none" ]]; then
+# Always pass --enrich, including "none", so the orb's setting overrides an
+# enrich list from a syft config file (e.g. an implicitly loaded .syft.yaml).
+if [[ -n "${ENRICH}" ]]; then
   syft_args+=(--enrich "${ENRICH}")
 fi
 
@@ -519,6 +520,11 @@ fi
 
 # The source is added last and can be a container image or filesystem path.
 syft_args+=("${SOURCE}")
+
+# This orb pins the syft version, so syft's start-up update check only adds a request
+# to toolbox-data.anchore.io. That request has no timeout and can stall builds whose
+# egress is blocked, so it is disabled unless the caller explicitly sets the variable.
+export SYFT_CHECK_FOR_APP_UPDATE="${SYFT_CHECK_FOR_APP_UPDATE:-false}"
 
 # Generate the SBOM(s)
 echo "Scanning with syft..."
