@@ -120,8 +120,8 @@ parameters:
   resource_class:
     type: enum
     default: medium
-    enum: ["small", "medium", "medium+", "large", "xlarge", "2xlarge", "2xlarge+"]
-    description: CircleCI resource class for the job.
+    enum: ["small", "medium", "medium+", "large", "xlarge", "2xlarge", "2xlarge+", "arm.medium", "arm.large", "arm.xlarge", "arm.2xlarge"]
+    description: CircleCI resource class for the job. Use an arm.* class to run on arm64.
 
 docker:
   - image: cimg/base:<< parameters.cimg_tag >>
