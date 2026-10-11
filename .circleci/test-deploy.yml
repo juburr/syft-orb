@@ -225,8 +225,9 @@ jobs:
             check "dir:.." names
             check "dir:-s" "-s"
             check "file:--help" "--help"
-            check "dir:.venv" venv
-            check "file:.env" env
+            check "dir:.venv" _venv
+            check "file:.env" _env
+            check "file:env" env
             CDPATH=/tmp/names check "dir:myrepo/." myrepo
             check "file:target/release/app" app
             check "ghcr.io/org/app:1.0.0" app-1.0.0

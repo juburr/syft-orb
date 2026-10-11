@@ -115,9 +115,11 @@ extract_source_basename() {
     fi
   fi
 
-  # Drop leading dots (e.g. dir:.venv) so the SBOM isn't a hidden file, which
-  # log_sbom's directory mode would skip.
-  basename="${basename#"${basename%%[!.]*}"}"
+  # Replace leading dots with underscores (e.g. dir:.venv -> _venv) so the SBOM
+  # isn't a hidden file, which log_sbom's directory mode would skip, while still
+  # differing from the output for a plain "venv" source.
+  local dots="${basename%%[!.]*}"
+  basename="${dots//./_}${basename#"${dots}"}"
   echo "${basename:-project}"
 }
 
