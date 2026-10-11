@@ -9,9 +9,10 @@ parameters:
     default: ""
     description: |
       Path to a syft configuration file, passed as --config. Relative paths are resolved against the working directory.
-      Settings passed through this orb's parameters (exclude, select_catalogers, and enrich unless "none") take
-      precedence over the same keys in the file. Note that syft also loads .syft.yaml from the working directory
-      on its own when no config is given.
+      Non-empty exclude and select_catalogers parameters replace the same keys in the file. Note that syft also loads
+      .syft.yaml from the working directory on its own when no config is given. RPM and DEB sources are scanned from
+      a temporary extraction directory, so use absolute paths for path-valued settings inside the file
+      (e.g. format.template.path) when scanning packages.
   exclude:
     type: string
     default: ""
@@ -53,9 +54,10 @@ parameters:
     type: string
     default: ""
     description: |
-      Passed to syft --select-catalogers. Comma-separated cataloger names or tags; prefix an entry with "+" to add
-      it to, or "-" to remove it from, the default set for the source type (e.g. "-file" or "+sbom-cataloger").
-      A list without prefixes replaces the default set. See "syft cataloger list" for names and tags.
+      Passed to syft --select-catalogers, adjusting the default cataloger set for the source type. Comma-separated:
+      "+name" adds a cataloger, "-name" or "-tag" removes catalogers, and an unprefixed tag (e.g. "rust") keeps only
+      the default catalogers with that tag. Unprefixed cataloger names are rejected by syft. To replace the default
+      set itself, use default-catalogers in a config file. See "syft cataloger list" for names and tags.
 steps:
   - run:
       name: Generate SBOM

@@ -491,6 +491,20 @@ jobs:
             assert_pkgs scope-catalogers/mono.syft.json present lodash
             assert_pkgs scope-catalogers/mono.syft.json absent itoa target-only-crate
 
+      # An unprefixed tag keeps only the default catalogers carrying that tag
+      - syft-orb/generate_sbom:
+          source: dir:/tmp/scope-fixture/mono
+          output_dir: scope-catalog-tag
+          output_formats: syft-json
+          enrich: none
+          select_catalogers: "rust"
+      - run:
+          name: "Verify select_catalogers tag sub-selection"
+          command: |
+            source /tmp/scope-fixture/assert.sh
+            assert_pkgs scope-catalog-tag/mono.syft.json present itoa
+            assert_pkgs scope-catalog-tag/mono.syft.json absent lodash ref-only-pkg
+
       # Relative config path with a DEB source, which is scanned from a temporary directory
       - syft-orb/generate_sbom:
           source: /tmp/scope-fixture/scopedemo_1.0.0_all.deb

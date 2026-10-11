@@ -77,7 +77,9 @@ parameters:
   select_catalogers:
     type: string
     default: ""
-    description: Passed to syft --select-catalogers, e.g. "-file" or "+sbom-cataloger".
+    description: |
+      Passed to syft --select-catalogers: "+name" adds, "-name"/"-tag" removes, and an unprefixed tag keeps only
+      default catalogers with that tag, e.g. "-file" or "+sbom-cataloger". See the generate_sbom command.
 
   # Workspace Configuration
   attach_workspace:
