@@ -23,6 +23,25 @@ jobs:
       - syft/install
 ```
 
+### Checksum verification
+The installer checks the SHA-512 checksum of the downloaded `syft` binary against a lookup table built into this orb. By default it fails closed: if the requested `version` has no checksum in the table, the install fails before anything is downloaded.
+
+| `verify_checksums` | Behaviour |
+| --- | --- |
+| `strict` (default) | Verify the binary; fail if the version has no known checksum. |
+| `known_versions` | Verify known versions; install unknown versions **without** verification. |
+| `false` | Skip verification entirely (not recommended). |
+
+The same parameter is available on the `syft/sbom` job.
+
+> **Upgrading to v0.10.0:** the default changed from `known_versions` to `strict`. If you pin a Syft `version` that is newer than this orb release knows about, the install now fails instead of installing an unverified binary. Upgrade the orb to a release that includes that version, or opt out explicitly:
+>
+> ```yaml
+> - syft/install:
+>     version: "1.99.0"
+>     verify_checksums: known_versions
+> ```
+
 ## Quick Start with the SBOM Job
 The simplest way to generate SBOMs is using the `syft/sbom` job, which handles installation and generation in one step. By default, it produces both SPDX and CycloneDX formats:
 

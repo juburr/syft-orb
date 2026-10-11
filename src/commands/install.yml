@@ -10,8 +10,12 @@ parameters:
   verify_checksums:
     type: enum
     enum: ["false", "known_versions", "strict"]
-    default: known_versions
-    description: Option to perform SHA-512 checksum verification on the downloaded Syft executable.
+    default: strict
+    description: |
+      SHA-512 checksum verification of the downloaded Syft executable against the lookup table built into this orb.
+        - strict (default): verify, and fail if the requested version has no known checksum.
+        - known_versions: verify known versions, but install unknown versions without verification.
+        - false: skip verification entirely (not recommended).
   version:
     type: string
     default: "1.52.0"
