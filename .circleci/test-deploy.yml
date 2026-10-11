@@ -863,6 +863,109 @@ jobs:
           name: Verify default install still succeeds
           command: syft version
 
+  # Test installation and scanning on a native arm64 machine executor.
+  test-install-arm64-machine:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: arm.medium
+    steps:
+      - checkout
+      - run:
+          name: Ensure the default install path exists and is on PATH
+          command: |
+            mkdir -p /home/circleci/bin
+            echo 'export PATH="/home/circleci/bin:${PATH}"' >> "${BASH_ENV}"
+      - syft-orb/install
+      - run:
+          name: Verify the arm64 build of syft was installed
+          command: |
+            echo "uname -m: $(uname -m)"
+            syft version
+            PLATFORM=$(syft version | awk '/^Platform:/ {print $2}')
+            if [[ "${PLATFORM}" != "linux/arm64" ]]; then
+              echo "ERROR: Expected syft built for linux/arm64, got '${PLATFORM}'"
+              exit 1
+            fi
+            echo "SUCCESS: syft ${PLATFORM} installed and runs natively"
+      - syft-orb/generate_sbom:
+          source: gcr.io/distroless/static:latest
+          output_dir: arm64-sboms
+          output_formats: "spdx-json,cyclonedx-json"
+      - run:
+          name: "Verify SBOMs generated on arm64"
+          command: |
+            for f in arm64-sboms/static-latest.spdx.json arm64-sboms/static-latest.cdx.json; do
+              if [[ ! -s "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                ls -la arm64-sboms/ || true
+                exit 1
+              fi
+              python3 -c "import json; json.load(open('${f}'))"
+              echo "SUCCESS: Found ${f}"
+            done
+
+  # Test platform detection on any executor by faking uname. Also checks that a
+  # wrong-architecture tarball (e.g. a stale cache) fails checksum verification.
+  test-install-platform-mapping:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - run:
+          name: Create a fake uname
+          command: |
+            mkdir -p /tmp/fake-uname
+            printf '#!/bin/bash\ncase "$1" in\n  -s) echo "${FAKE_UNAME_S:-Linux}" ;;\n  -m) echo "${FAKE_UNAME_M}" ;;\n  *) /bin/uname "$@" ;;\nesac\n' > /tmp/fake-uname/uname
+            chmod +x /tmp/fake-uname/uname
+      - run:
+          name: "Verify aarch64 and arm64 select the verified linux_arm64 build"
+          command: |
+            SCRIPT="${PWD}/src/scripts/install.sh"
+            for machine in aarch64 arm64; do
+              WORKDIR=$(mktemp -d)
+              mkdir -p "${WORKDIR}/bin"
+              (cd "${WORKDIR}" && PATH="/tmp/fake-uname:${PATH}" FAKE_UNAME_M="${machine}" \
+                PARAM_INSTALL_PATH="${WORKDIR}/bin" PARAM_VERIFY_CHECKSUMS=strict PARAM_VERSION=1.52.0 \
+                bash "${SCRIPT}" > "${WORKDIR}/install.log" 2>&1) || { cat "${WORKDIR}/install.log"; exit 1; }
+              grep -E "PLATFORM|syft_1.52.0|Checksum verification" "${WORKDIR}/install.log"
+              grep -q "PLATFORM: linux_arm64" "${WORKDIR}/install.log"
+              grep -q "Checksum verification passed!" "${WORKDIR}/install.log"
+              file "${WORKDIR}/bin/syft" | tee /dev/stderr | grep -q "aarch64"
+              echo "SUCCESS: ${machine} -> linux_arm64"
+            done
+      - run:
+          name: "Verify unsupported platforms are hard errors"
+          command: |
+            SCRIPT="${PWD}/src/scripts/install.sh"
+            check_fails() {
+              local expected="$1"; shift
+              local log
+              log=$(mktemp)
+              if env PATH="/tmp/fake-uname:${PATH}" "$@" PARAM_INSTALL_PATH=/tmp PARAM_VERSION=1.52.0 \
+                  bash "${SCRIPT}" > "${log}" 2>&1; then
+                cat "${log}"; echo "ERROR: install succeeded on an unsupported platform"; exit 1
+              fi
+              grep "ERROR" "${log}"
+              grep -q "${expected}" "${log}" || { cat "${log}"; echo "ERROR: unexpected failure"; exit 1; }
+            }
+            check_fails "Unsupported CPU architecture 'ppc64le'" FAKE_UNAME_M=ppc64le
+            check_fails "Unsupported CPU architecture 'armv7l'" FAKE_UNAME_M=armv7l
+            check_fails "Unsupported operating system 'Darwin'" FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64
+            echo "SUCCESS: unsupported platforms rejected"
+      - run:
+          name: "Verify a wrong-architecture cached tarball fails verification"
+          command: |
+            SCRIPT="${PWD}/src/scripts/install.sh"
+            WORKDIR=$(mktemp -d)
+            cd "${WORKDIR}"
+            curl -sSfL -o syft.tar.gz https://github.com/anchore/syft/releases/download/v1.52.0/syft_1.52.0_linux_amd64.tar.gz
+            if PATH="/tmp/fake-uname:${PATH}" FAKE_UNAME_M=aarch64 PARAM_INSTALL_PATH="${WORKDIR}" \
+                PARAM_VERSION=1.52.0 bash "${SCRIPT}" > install.log 2>&1; then
+              cat install.log; echo "ERROR: amd64 binary accepted for linux_arm64"; exit 1
+            fi
+            grep -q "ERROR: Checksum verification failed!" install.log || { cat install.log; exit 1; }
+            echo "SUCCESS: amd64 binary rejected for linux_arm64"
+
 workflows:
   test-deploy:
     jobs:
@@ -871,6 +974,21 @@ workflows:
       - command-test:
           filters: *filters
       - test-install-checksum-defaults:
+          filters: *filters
+      - test-install-arm64-machine:
+          filters: *filters
+      - test-install-platform-mapping:
+          filters: *filters
+
+      # Test the sbom job on an arm64 Docker resource class
+      - syft-orb/sbom:
+          name: test-sbom-container-arm64
+          source: "gcr.io/distroless/static:latest"
+          output_dir: sboms-arm64
+          resource_class: arm.medium
+          attach_workspace: false
+          persist_to_workspace: false
+          log_sboms: false
           filters: *filters
       - test-rpm-packages:
           filters: *filters
@@ -957,6 +1075,9 @@ workflows:
             - orb-tools/pack
             - command-test
             - test-install-checksum-defaults
+            - test-install-arm64-machine
+            - test-install-platform-mapping
+            - test-sbom-container-arm64
             - test-rpm-packages
             - test-deb-packages
             - test-cargo-auditable

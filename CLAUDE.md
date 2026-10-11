@@ -21,7 +21,7 @@ circleci orb lint orb.yml
 # Publish development version (requires auth)
 circleci orb publish orb.yml juburr/syft-orb@dev:latest
 
-# Generate SHA-512 checksum for new syft version
+# Generate SHA-512 checksums (linux amd64 + arm64) for a new syft version
 ./src/scripts/install_hash.sh -v <version>
 ```
 
@@ -40,7 +40,7 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 
 ### Key Implementation Details
 
-**`scripts/install.sh`**: Downloads syft from GitHub releases with SHA-512 checksum verification. Maintains a checksum lookup table for 200+ versions. Three verification modes: `false`, `known_versions`, `strict`.
+**`scripts/install.sh`**: Downloads the linux amd64 or arm64 syft build (from `uname -m`) from GitHub releases with SHA-512 checksum verification. Maintains a checksum lookup table for 200+ versions, keyed `<version>_linux_<arch>`. Three verification modes: `false`, `known_versions`, `strict`.
 
 **`scripts/generate_sbom.sh`**: Core SBOM generation logic with:
 - Smart basename extraction for auto-generated filenames
