@@ -176,6 +176,33 @@ jobs:
           sbom_dir: sboms
           pretty: true
 
+      # Test 8: dir: and file: schemes are not part of auto-generated filenames
+      - syft-orb/generate_sbom:
+          source: "dir:."
+          output_dir: scheme-names
+          output_formats: spdx-json
+          enrich: none
+      - syft-orb/generate_sbom:
+          source: "file:README.md"
+          output_dir: scheme-names
+          output_formats: spdx-json
+          enrich: none
+      - run:
+          name: "Verify dir: and file: sources produce clean filenames"
+          command: |
+            ls -la scheme-names/
+            for f in "scheme-names/$(basename "${PWD}").spdx.json" "scheme-names/README.md.spdx.json"; do
+              if [[ ! -f "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                exit 1
+              fi
+              echo "SUCCESS: Found ${f}"
+            done
+            if ls scheme-names/ | grep -q ":"; then
+              echo "ERROR: An output filename still contains a source scheme"
+              exit 1
+            fi
+
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
     docker:
