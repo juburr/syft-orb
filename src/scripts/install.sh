@@ -5,7 +5,8 @@ set +o history
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
 INSTALL_PATH=$(circleci env subst "${PARAM_INSTALL_PATH}")
-VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS}"
+# Fail closed: an unset value is treated as strict, the orb's default.
+VERIFY_CHECKSUMS="${PARAM_VERIFY_CHECKSUMS:-strict}"
 VERSION=$(circleci env subst "${PARAM_VERSION}")
 
 # Print command arguments for debugging purposes.
@@ -13,6 +14,14 @@ echo "Running Syft installer..."
 echo "  INSTALL_PATH: ${INSTALL_PATH}"
 echo "  VERIFY_CHECKSUMS: ${VERIFY_CHECKSUMS}"
 echo "  VERSION: ${VERSION}"
+
+case "${VERIFY_CHECKSUMS}" in
+    strict|known_versions|false) ;;
+    *)
+        echo "ERROR: Invalid verify_checksums value '${VERIFY_CHECKSUMS}'. Expected one of: strict, known_versions, false."
+        exit 1
+        ;;
+esac
 
 # Lookup table of sha512 checksums for different versions of syft
 declare -A sha512sums
@@ -292,6 +301,27 @@ verify_checksum() {
     echo "Checksum verification passed!"
 }
 
+# Look up the expected checksum before downloading anything. In strict mode (the
+# default) a version missing from the table fails here, without fetching a binary
+# that could never be verified. If the version is not in the table, a new version
+# of Syft was likely released but this orb hasn't been updated yet to include its
+# checksum. Developers can explicitly opt out of this hard error with
+# "known_versions", or disable verification entirely with "false".
+EXPECTED_CHECKSUM="${sha512sums[${VERSION}]:-}"
+if [[ "${VERIFY_CHECKSUMS}" == "false" ]]; then
+    echo "WARN: Checksum validation is disabled. This is not recommended. Skipping..."
+elif [[ -z "${EXPECTED_CHECKSUM}" ]]; then
+    if [[ "${VERIFY_CHECKSUMS}" == "known_versions" ]]; then
+        echo "WARN: No checksum available for version ${VERSION}, and verify_checksums is set to 'known_versions'."
+        echo "WARN: Either upgrade this orb, or submit a PR with the new checksum."
+        echo "WARN: Skipping checksum verification..."
+    else
+        echo "ERROR: No checksum available for version ${VERSION}, and verify_checksums is set to 'strict' (the default)."
+        echo "ERROR: Either upgrade this orb, submit a PR with the new checksum, or explicitly opt out by setting 'verify_checksums' to 'known_versions'."
+        exit 1
+    fi
+fi
+
 # Check if the syft tar file was in the CircleCI cache.
 # Cache restoration is handled in install.yml
 if [[ -f syft.tar.gz ]]; then
@@ -314,30 +344,9 @@ fi
 
 
 # An syft binary should exist at this point, regardless of whether it was obtained
-# through cache or re-downloaded. First verify its integrity.
-if [[ "${VERIFY_CHECKSUMS}" != "false" ]]; then
-    EXPECTED_CHECKSUM=${sha512sums[${VERSION}]}
-    if [[ -n "${EXPECTED_CHECKSUM}" ]]; then
-        # If the version is in the table, verify the checksum
-        verify_checksum "syft" "${EXPECTED_CHECKSUM}"
-    else
-        # If the version is not in the table, this means that a new version of Syft
-        # was released but this orb hasn't been updated yet to include its checksum in
-        # the lookup table. Allow developers to configure if they want this to result in
-        # a hard error, via "strict mode" (recommended), or to allow execution for versions
-        # not directly specified in the above lookup table.
-        if [[ "${VERIFY_CHECKSUMS}" == "known_versions" ]]; then
-            echo "WARN: No checksum available for version ${VERSION}, but strict mode is not enabled."
-            echo "WARN: Either upgrade this orb, submit a PR with the new checksum."
-            echo "WARN: Skipping checksum verification..."
-        else
-            echo "ERROR: No checksum available for version ${VERSION} and strict mode is enabled."
-            echo "ERROR: Either upgrade this orb, submit a PR with the new checksum, or set 'verify_checksums' to 'known_versions'."
-            exit 1
-        fi
-    fi
-else
-    echo "WARN: Checksum validation is disabled. This is not recommended. Skipping..."
+# through cache or re-downloaded. Verify its integrity before installing it.
+if [[ "${VERIFY_CHECKSUMS}" != "false" && -n "${EXPECTED_CHECKSUM}" ]]; then
+    verify_checksum "syft" "${EXPECTED_CHECKSUM}"
 fi
 
 # After verifying integrity, install it by moving it to an appropriate bin
