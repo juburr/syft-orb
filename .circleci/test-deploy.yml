@@ -601,7 +601,8 @@ jobs:
             - workspace
 
   # Test that syft's update check (an extra request to toolbox-data.anchore.io) is
-  # disabled by default, and that an explicit SYFT_CHECK_FOR_APP_UPDATE still wins.
+  # disabled by default, that an explicit SYFT_CHECK_FOR_APP_UPDATE still wins, and
+  # that enrich: none reaches syft as --enrich none.
   test-update-check-disabled:
     docker:
       - image: cimg/base:current-22.04
@@ -625,9 +626,23 @@ jobs:
             fi
             echo "SUCCESS: update check disabled by default"
 
-            SYFT_CHECK_FOR_APP_UPDATE=true scan override.log
-            grep -q "check-for-app-update: true" override.log || { cat override.log; exit 1; }
+            # Check the override and the --enrich flag with a stub syft, so this release
+            # gate never makes the (timeout-free) update request itself.
+            mkdir -p /tmp/stub-syft
+            printf '#!/bin/bash\necho "${SYFT_CHECK_FOR_APP_UPDATE}" > /tmp/stub-syft/update-check\necho "$*" > /tmp/stub-syft/args\n' > /tmp/stub-syft/syft
+            chmod +x /tmp/stub-syft/syft
+
+            PATH="/tmp/stub-syft:${PATH}" SYFT_CHECK_FOR_APP_UPDATE=true scan override.log
+            if [[ "$(cat /tmp/stub-syft/update-check)" != "true" ]]; then
+              cat override.log; echo "ERROR: explicit SYFT_CHECK_FOR_APP_UPDATE=true was not passed to syft"; exit 1
+            fi
             echo "SUCCESS: explicit SYFT_CHECK_FOR_APP_UPDATE=true is respected"
+
+            # enrich: none must be passed explicitly so it overrides a config file's enrich list
+            if ! grep -q -- "--enrich none" /tmp/stub-syft/args; then
+              cat /tmp/stub-syft/args; echo "ERROR: enrich: none was not passed to syft"; exit 1
+            fi
+            echo "SUCCESS: enrich: none is passed to syft as --enrich none"
 
   # Test the sbom job with DEB - uses the job directly
   test-sbom-job-deb:

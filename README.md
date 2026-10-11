@@ -74,7 +74,7 @@ For Debian packages, the orb extracts contents using `dpkg-deb` before scanning,
 ## Info for Security Teams
 
 ### Required external access
-Hosts below were determined from the Syft v1.52.0 source (the orb's default version). All traffic is outbound HTTPS.
+Hosts below were determined from the Syft v1.52.0 source (the orb's default version). The Syft, GitHub, registry and package-ecosystem endpoints listed use outbound HTTPS (port 443); distribution package mirrors (see below) use whatever scheme the executor's package sources specify, which is often plain HTTP.
 
 **Installing Syft** (`syft/install`, also run by the `syft/sbom` job). Skipped on a CircleCI cache hit.
 
@@ -88,7 +88,7 @@ Hosts below were determined from the Syft v1.52.0 source (the orb's default vers
 
 | `enrich` | Hosts contacted | Override in a Syft `config` file |
 | --- | --- | --- |
-| `golang` | `proxy.golang.org` (or `$GOPROXY`). For modules the proxy cannot serve, and for modules matching `GOPRIVATE`/`GONOPROXY`, Syft falls back to `direct`: a shallow git clone over HTTPS from the module path's host (e.g. `github.com`), so any VCS host may be contacted. | `golang.proxy`, `golang.no-proxy` |
+| `golang` | `proxy.golang.org` (or `$GOPROXY`), which may redirect module downloads to `storage.googleapis.com`. For modules the proxy cannot serve, and for modules matching `GOPRIVATE`/`GONOPROXY`, Syft falls back to `direct`: a shallow git clone over HTTPS from the module path's host (e.g. `github.com`), so any VCS host may be contacted. | `golang.proxy`, `golang.no-proxy` |
 | `java` | `repo1.maven.org` (Maven Central) | `java.maven-url` |
 | `javascript` | `registry.npmjs.org` | `javascript.npm-base-url` |
 | `python` | `pypi.org` | `python.pypi-base-url` |
@@ -97,13 +97,13 @@ Hosts below were determined from the Syft v1.52.0 source (the orb's default vers
 
 **Scanning, independent of `enrich`:**
 
-- Container images referenced by name are pulled from their registry (plus that registry's auth and blob hosts, e.g. `auth.docker.io` and `production.cloudflare.docker.com` for Docker Hub). `docker-archive:`, `oci-archive:` and `oci-dir:` sources need no network.
-- For RPM and DEB sources, if `rpm2archive` or `dpkg-deb` is missing, the orb installs it with `apt-get`, `dnf` or `yum`, which contacts the image's distribution mirrors. `cimg/base` ships `dpkg-deb` but not `rpm`.
-- If a Go toolchain is on `PATH` and a `go.mod` is in scope, Syft runs `go list`, which can download missing modules through `GOPROXY` regardless of `enrich`. Set `SYFT_GOLANG_USE_PACKAGES_LIB=false` (or `GOPROXY=off`) to prevent this. `cimg/base` has no Go toolchain.
-- Syft's start-up update check (`toolbox-data.anchore.io`) is disabled by this orb via `SYFT_CHECK_FOR_APP_UPDATE=false`, since the orb pins the version. Setting that variable yourself takes precedence.
+- Container images referenced by name are pulled from their registry, plus that registry's auth and blob hosts. For Docker Hub (including unqualified names such as `ubuntu:latest`) that is `registry-1.docker.io`, `auth.docker.io` and `production.cloudflare.docker.com`. `docker-archive:`, `oci-archive:` and `oci-dir:` sources need no network.
+- For RPM and DEB sources, if `rpm2archive` or `dpkg-deb` is missing, the orb installs it with `apt-get`, `dnf` or `yum`, which contacts the distribution mirrors configured in the executor image, using their configured scheme (Ubuntu images commonly use `http://archive.ubuntu.com`). `cimg/base` ships `dpkg-deb` but not `rpm`.
+- If a Go toolchain is on `PATH` and a `go.mod` is in scope, Syft runs `go list`, which can download missing modules through `GOPROXY` (`proxy.golang.org`, possibly redirecting to `storage.googleapis.com`) and check them against `GOSUMDB` (`sum.golang.org`) when `go.sum` lacks their hashes, regardless of `enrich`. Set `SYFT_GOLANG_USE_PACKAGES_LIB=false` (or `GOPROXY=off`) to prevent this. `cimg/base` has no Go toolchain.
+- Syft's start-up update check (`toolbox-data.anchore.io`) is disabled for scans run through `syft/generate_sbom` and the `syft/sbom` job, which set `SYFT_CHECK_FOR_APP_UPDATE=false` since the orb pins the version (a value you set yourself takes precedence). If you run `syft` directly after `syft/install`, set `SYFT_CHECK_FOR_APP_UPDATE=false` in your job to avoid the request.
 
 ### Disconnected builds
-`enrich: none` is the disconnected-build setting: with it, Syft makes no enrichment requests. For a build with no egress at all, also:
+`enrich: none` is the disconnected-build setting: the orb passes `--enrich none` to Syft, which also overrides an `enrich` list in a config file or `.syft.yaml`. Per-ecosystem network settings in a config file (for example `javascript.search-remote-licenses: true` or `java.use-network: true`) still take precedence over `--enrich`, so leave them unset. For a build with no egress at all, also:
 
 - provide `syft` in the executor image and use the `syft/generate_sbom` command in your own job instead of `syft/install` or the `syft/sbom` job;
 - scan local sources only (`dir:`, `file:`, `docker-archive:`, `oci-archive:`, `oci-dir:`, or an image already in the local daemon via `docker:`);

@@ -431,8 +431,9 @@ for output_spec in "${OUTPUT_PATHS[@]}"; do
   syft_args+=(-o "${output_spec}")
 done
 
-# Conditionally add the --enrich flag
-if [[ -n "${ENRICH}" && "${ENRICH}" != "none" ]]; then
+# Always pass --enrich, including "none", so the orb's setting overrides an
+# enrich list from a syft config file (e.g. an implicitly loaded .syft.yaml).
+if [[ -n "${ENRICH}" ]]; then
   syft_args+=(--enrich "${ENRICH}")
 fi
 
