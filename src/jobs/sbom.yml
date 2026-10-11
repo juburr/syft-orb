@@ -61,6 +61,24 @@ parameters:
     default: ""
     description: Override the default base path for SBOM generation.
 
+  exclude:
+    type: string
+    default: ""
+    description: |
+      Comma- or newline-separated glob patterns to exclude, each passed to syft as --exclude.
+      For dir: sources, patterns are relative to the scan root and must start with "./", "*/" or "**/",
+      e.g. "./target/**,**/node_modules/**". See the generate_sbom command for details.
+
+  config:
+    type: string
+    default: ""
+    description: Path to a syft configuration file, passed as --config.
+
+  select_catalogers:
+    type: string
+    default: ""
+    description: Passed to syft --select-catalogers, e.g. "-file" or "+sbom-cataloger".
+
   # Workspace Configuration
   attach_workspace:
     type: boolean
@@ -121,6 +139,9 @@ steps:
       scope: << parameters.scope >>
       enrich: << parameters.enrich >>
       base_path: << parameters.base_path >>
+      exclude: << parameters.exclude >>
+      config: << parameters.config >>
+      select_catalogers: << parameters.select_catalogers >>
 
   # Log SBOMs if requested
   - when:

@@ -42,6 +42,21 @@ You can customize the output formats:
     output_formats: "spdx-json,cyclonedx-json,syft-json"
 ```
 
+## Limiting What Gets Scanned
+Directory scans pick up everything under the scan root, including build output, vendored code and dependency trees. Use `exclude`, `config` and `select_catalogers` (on both `generate_sbom` and the `syft/sbom` job) to keep an inventory focused:
+
+```yaml
+- syft/sbom:
+    source: "dir:."
+    exclude: "./target/**,**/node_modules/**,./ref/**"
+```
+
+- `exclude` takes comma- or newline-separated globs, each passed to syft as `--exclude`. For `dir:` and `file:` sources and extracted RPM/DEB packages, patterns are relative to the scan root and must start with `./`, `*/` or `**/` (syft rejects anything else). For container images, patterns match absolute paths inside the image, such as `/usr/share/doc/**`. Brace alternations like `./{target,ref}/**` are kept intact.
+- `config` points syft at a configuration file (`--config`) for anything the orb doesn't expose. The orb's `exclude`, `select_catalogers` and `enrich` (unless `none`) override the same keys in the file rather than merging with them. Without `config`, syft still loads a `.syft.yaml` from the working directory if one exists.
+- `select_catalogers` is passed to `--select-catalogers`, e.g. `-file` to skip file metadata or `+sbom-cataloger` to add a cataloger. Run `syft cataloger list` to see names and tags.
+
+Syft already ignores JavaScript lockfiles inside `node_modules`, but it still walks those trees and catalogs other ecosystems' manifests there (for example the `Cargo.lock` that native npm packages ship), so excluding them keeps the inventory accurate and the scan fast.
+
 ## Container Image SBOMs
 Generate SBOMs for container images using the `generate_sbom` command. Output filenames are auto-generated based on the source, and you can produce multiple formats in a single scan:
 
