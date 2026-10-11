@@ -600,6 +600,35 @@ jobs:
           paths:
             - workspace
 
+  # Test that syft's update check (an extra request to toolbox-data.anchore.io) is
+  # disabled by default, and that an explicit SYFT_CHECK_FOR_APP_UPDATE still wins.
+  test-update-check-disabled:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - checkout
+      - syft-orb/install
+      - run:
+          name: "Verify the update check is off by default and overridable"
+          command: |
+            SCRIPT="${PWD}/src/scripts/generate_sbom.sh"
+            mkdir -p /tmp/empty-scan && cd /tmp/empty-scan
+            scan() {
+              PARAM_BASE_PATH="" PARAM_ENRICH=none PARAM_SOURCE="dir:." PARAM_OUTPUT_DIR=out \
+                PARAM_OUTPUT_FORMATS=syft-json PARAM_SCOPE=squashed bash "${SCRIPT}" > "$1" 2>&1
+            }
+
+            scan default.log
+            grep -q "check-for-app-update: false" default.log || { cat default.log; exit 1; }
+            if grep -q "checking if a new version" default.log; then
+              echo "ERROR: syft checked for updates by default"; exit 1
+            fi
+            echo "SUCCESS: update check disabled by default"
+
+            SYFT_CHECK_FOR_APP_UPDATE=true scan override.log
+            grep -q "check-for-app-update: true" override.log || { cat override.log; exit 1; }
+            echo "SUCCESS: explicit SYFT_CHECK_FOR_APP_UPDATE=true is respected"
+
   # Test the sbom job with DEB - uses the job directly
   test-sbom-job-deb:
     docker:
@@ -650,6 +679,8 @@ workflows:
 
       # Test the sbom job
       - test-sbom-job-rpm:
+          filters: *filters
+      - test-update-check-disabled:
           filters: *filters
 
       # Test sbom job with default formats (cyclonedx-json,spdx-json)
@@ -728,6 +759,7 @@ workflows:
             - test-sbom-rpm-x86-default-formats
             - test-sbom-rpm-noarch-single-format
             - test-sbom-container-three-formats
+            - test-update-check-disabled
             - test-sbom-source
             - test-sbom-deb-default-formats
           context: orb-publishing
