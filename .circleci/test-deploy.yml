@@ -706,6 +706,92 @@ jobs:
               echo "SUCCESS: Found ${f}"
             done
 
+  # Test that a binary built with cargo-auditable has its crates reported by syft's
+  # cargo-auditable binary cataloger, with default scan settings, for both a file:
+  # source and a container image containing the binary.
+  test-cargo-auditable:
+    docker:
+      - image: cimg/rust:1.99.0
+    environment:
+      CARGO_AUDITABLE_VERSION: "0.7.7"
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Install pinned cargo-auditable
+          command: |
+            cargo install --locked cargo-auditable --version "${CARGO_AUDITABLE_VERSION}"
+            cargo install --list | grep "^cargo-auditable v${CARGO_AUDITABLE_VERSION}:"
+      - run:
+          name: Build a tiny Rust binary with cargo-auditable
+          command: |
+            mkdir -p /tmp/auditable-demo/src
+            cd /tmp/auditable-demo
+            printf '[package]\nname = "auditable-demo"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nitoa = "=1.0.11"\n' > Cargo.toml
+            printf 'fn main() {\n    let mut buf = itoa::Buffer::new();\n    println!("{}", buf.format(42u64));\n}\n' > src/main.rs
+            cargo auditable build --release
+            ./target/release/auditable-demo
+
+            # Stage only the binary, so nothing but its embedded audit data can report the crates
+            mkdir -p /tmp/auditable-bin
+            cp target/release/auditable-demo /tmp/auditable-bin/
+
+            # Negative control: the same program built without cargo-auditable
+            cargo build --release
+            mkdir -p /tmp/plain-bin
+            cp target/release/auditable-demo /tmp/plain-bin/
+      - run:
+          name: Build an image containing the binary
+          command: |
+            cd /tmp/auditable-bin
+            printf 'FROM scratch\nCOPY auditable-demo /usr/local/bin/auditable-demo\nENTRYPOINT ["/usr/local/bin/auditable-demo"]\n' > Dockerfile
+            docker build -t auditable-demo:test .
+            docker save auditable-demo:test -o /tmp/auditable-demo-image.tar
+            ls -la /tmp/auditable-demo-image.tar
+      - syft-orb/install
+      # Default scan settings; both formats are requested so foundBy can be checked in CycloneDX.
+      - syft-orb/generate_sbom:
+          source: file:/tmp/auditable-bin/auditable-demo
+          output_dir: auditable-file
+          output_formats: "spdx-json,cyclonedx-json"
+      - syft-orb/generate_sbom:
+          source: docker-archive:/tmp/auditable-demo-image.tar
+          output_dir: auditable-image
+          output_formats: "spdx-json,cyclonedx-json"
+      - syft-orb/generate_sbom:
+          source: file:/tmp/plain-bin/auditable-demo
+          output_dir: plain-file
+          output_formats: "spdx-json,cyclonedx-json"
+      - run:
+          name: "Verify crates are reported from the cargo-auditable data"
+          command: |
+            for dir in auditable-file auditable-image; do
+              SPDX=$(ls "${dir}"/*.spdx.json)
+              CDX=$(ls "${dir}"/*.cdx.json)
+              echo "Checking ${SPDX} and ${CDX}"
+              for purl in pkg:cargo/itoa@1.0.11 pkg:cargo/auditable-demo@0.1.0; do
+                if ! jq -e --arg p "${purl}" '[.packages[].externalRefs[]? | select(.referenceLocator == $p)] | length > 0' "${SPDX}" > /dev/null; then
+                  echo "ERROR: ${purl} missing from ${SPDX}"
+                  jq -r '.packages[] | .name + " " + (.versionInfo // "")' "${SPDX}"
+                  exit 1
+                fi
+                FOUND_BY=$(jq -r --arg p "${purl}" '.components[] | select(.purl == $p) | .properties[]? | select(.name == "syft:package:foundBy") | .value' "${CDX}")
+                if [[ "${FOUND_BY}" != "cargo-auditable-binary-cataloger" ]]; then
+                  echo "ERROR: ${purl} in ${CDX} was found by '${FOUND_BY}', expected cargo-auditable-binary-cataloger"
+                  exit 1
+                fi
+                echo "  OK: ${purl} (found by ${FOUND_BY})"
+              done
+            done
+            echo "SUCCESS: cargo-auditable crates reported for file: and image sources"
+
+            # Without the audit data, syft has nothing to report the dependency from
+            if jq -e '[.packages[].externalRefs[]? | select(.referenceLocator == "pkg:cargo/itoa@1.0.11")] | length > 0' plain-file/*.spdx.json > /dev/null; then
+              echo "ERROR: itoa reported for a binary built without cargo-auditable"
+              exit 1
+            fi
+            echo "SUCCESS: negative control reports no crates without cargo-auditable"
+
   # Test the sbom job with RPM - uses the job directly
   test-sbom-job-rpm:
     docker:
@@ -798,6 +884,8 @@ workflows:
           filters: *filters
       - test-deb-packages:
           filters: *filters
+      - test-cargo-auditable:
+          filters: *filters
 
       # Test the sbom job
       - test-sbom-job-rpm:
@@ -889,6 +977,7 @@ workflows:
             - test-rpm-packages
             - test-scope-control
             - test-deb-packages
+            - test-cargo-auditable
             - test-sbom-rpm-x86-default-formats
             - test-sbom-rpm-noarch-single-format
             - test-sbom-container-three-formats
