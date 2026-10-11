@@ -176,6 +176,109 @@ jobs:
           sbom_dir: sboms
           pretty: true
 
+      # Test 8: dir: and file: schemes are not part of auto-generated filenames
+      - syft-orb/generate_sbom:
+          source: "dir:."
+          output_dir: scheme-names
+          output_formats: spdx-json
+          enrich: none
+      - syft-orb/generate_sbom:
+          source: "file:README.md"
+          output_dir: scheme-names
+          output_formats: spdx-json
+          enrich: none
+      - run:
+          name: "Verify dir: and file: sources produce clean filenames"
+          command: |
+            ls -la scheme-names/
+            for f in "scheme-names/$(basename "${PWD}").spdx.json" "scheme-names/README.md.spdx.json"; do
+              if [[ ! -f "${f}" ]]; then
+                echo "ERROR: Expected file ${f} not found"
+                exit 1
+              fi
+              echo "SUCCESS: Found ${f}"
+            done
+            if ls scheme-names/ | grep -q ":"; then
+              echo "ERROR: An output filename still contains a source scheme"
+              exit 1
+            fi
+      - run:
+          name: "Verify filename derivation edge cases"
+          command: |
+            # Exercise the naming function directly; scanning "/" for real would be slow.
+            sed -n '/^extract_source_basename() {/,/^}/p' src/scripts/generate_sbom.sh > /tmp/basename_fn.sh
+            source /tmp/basename_fn.sh
+            mkdir -p /tmp/names/myrepo && cd /tmp/names/myrepo
+            check() {
+              local got
+              got=$(extract_source_basename "$1")
+              if [[ "${got}" != "$2" ]]; then
+                echo "ERROR: '$1' -> '${got}', expected '$2'"
+                exit 1
+              fi
+              echo "  OK: '$1' -> '${got}'"
+            }
+            check "dir:." myrepo
+            check "dir:/" project
+            check "/" project
+            check "dir:file:project" "file:project"
+            check "dir:.." names
+            check "dir:-s" "-s"
+            check "file:--help" "--help"
+            check "dir:.venv" .venv
+            check "file:_env" _env
+            CDPATH=/tmp/names check "dir:myrepo/." myrepo
+            check "file:target/release/app" app
+            check "ghcr.io/org/app:1.0.0" app-1.0.0
+            check "./rpms/app-1.0-1.el9.x86_64.rpm" app-1.0-1.el9.x86_64
+      - run:
+          name: "Verify log_sbom directory mode includes hidden SBOM files"
+          command: |
+            mkdir -p hidden-logs
+            cp scheme-names/README.md.spdx.json hidden-logs/.venv.spdx.json
+            PARAM_PRETTY=false PARAM_SBOM_DIR=hidden-logs PARAM_SBOM_FORMAT=spdx-json PARAM_SBOM_PATH="" \
+              bash src/scripts/log_sbom.sh > hidden-logs.out 2>&1
+            if ! grep -q "Logged 1 SBOM file(s)" hidden-logs.out; then
+              cat hidden-logs.out
+              echo "ERROR: hidden SBOM file was not logged"
+              exit 1
+            fi
+            echo "SUCCESS: hidden SBOM file logged"
+
+      # Test 9: a file: scheme on an RPM is handled like a plain path
+      - syft-orb/generate_sbom:
+          source: "file:/tmp/rpm/syft*_linux_amd64.rpm"
+          output_dir: rpm-file-scheme
+          output_formats: spdx-json
+          enrich: none
+      - run:
+          name: "Verify file: scheme RPM source"
+          command: |
+            EXPECTED="rpm-file-scheme/syft_1.24.0_linux_amd64.spdx.json"
+            if [[ ! -f "${EXPECTED}" ]]; then
+              echo "ERROR: Expected file ${EXPECTED} not found"
+              ls -la rpm-file-scheme/ || true
+              exit 1
+            fi
+            echo "SUCCESS: Found ${EXPECTED}"
+      - run:
+          name: "Verify a dash-leading DEB path with a file: scheme"
+          command: |
+            SCRIPT="${PWD}/src/scripts/generate_sbom.sh"
+            mkdir -p /tmp/dashdeb/root/DEBIAN /tmp/dashdeb/root/opt/demo
+            printf 'Package: dashdemo\nVersion: 1.0.0\nArchitecture: all\nMaintainer: t <t@example.com>\nDescription: t\n' > /tmp/dashdeb/root/DEBIAN/control
+            echo demo > /tmp/dashdeb/root/opt/demo/file.txt
+            cd /tmp/dashdeb
+            dpkg-deb --build root ./-x.deb
+            PARAM_BASE_PATH="" PARAM_ENRICH=none PARAM_SOURCE="file:-x.deb" PARAM_OUTPUT_DIR=out \
+              PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed bash "${SCRIPT}"
+            if [[ ! -f "out/-x.spdx.json" ]]; then
+              echo "ERROR: Expected out/-x.spdx.json"
+              ls -la out/ || true
+              exit 1
+            fi
+            echo "SUCCESS: Found out/-x.spdx.json"
+
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
     docker:
