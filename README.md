@@ -107,4 +107,5 @@ Hosts below were determined from the Syft v1.52.0 source (the orb's default vers
 
 - provide `syft` in the executor image and use the `syft/generate_sbom` command in your own job instead of `syft/install` or the `syft/sbom` job;
 - scan local sources only (`dir:`, `file:`, `docker-archive:`, `oci-archive:`, `oci-dir:`, or an image already in the local daemon via `docker:`);
+- for RPM or DEB sources, preinstall `rpm2archive` (from the `rpm` package) and `tar`, or `dpkg-deb`, in the executor image, since the orb otherwise tries to install them from the distribution mirrors;
 - set `SYFT_GOLANG_USE_PACKAGES_LIB=false` if the executor has a Go toolchain.
