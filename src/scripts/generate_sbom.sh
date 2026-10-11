@@ -95,12 +95,15 @@ extract_source_basename() {
     return
   fi
 
-  # Directory or file: strip any dir:/file: scheme, then use the basename
-  # (handle "." specially)
-  local path="${source#dir:}"
-  path="${path#file:}"
+  # Directory or file: strip the dir:/file: scheme, if any, then use the
+  # basename ("." and "/" fall back to the directory's own name or "project")
+  local path="${source}"
+  case "${source}" in
+    dir:*) path="${source#dir:}" ;;
+    file:*) path="${source#file:}" ;;
+  esac
   basename=$(basename "${path}")
-  if [[ "${basename}" == "." ]]; then
+  if [[ "${basename}" == "." || "${basename}" == "/" ]]; then
     # Use the directory's own name or "project" as fallback
     local parent_dir
     parent_dir=$(cd "${path}" 2>/dev/null && basename "$(pwd)")

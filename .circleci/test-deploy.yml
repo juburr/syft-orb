@@ -202,6 +202,29 @@ jobs:
               echo "ERROR: An output filename still contains a source scheme"
               exit 1
             fi
+      - run:
+          name: "Verify filename derivation edge cases"
+          command: |
+            # Exercise the naming function directly; scanning "/" for real would be slow.
+            sed -n '/^extract_source_basename() {/,/^}/p' src/scripts/generate_sbom.sh > /tmp/basename_fn.sh
+            source /tmp/basename_fn.sh
+            mkdir -p /tmp/names/myrepo && cd /tmp/names/myrepo
+            check() {
+              local got
+              got=$(extract_source_basename "$1")
+              if [[ "${got}" != "$2" ]]; then
+                echo "ERROR: '$1' -> '${got}', expected '$2'"
+                exit 1
+              fi
+              echo "  OK: '$1' -> '${got}'"
+            }
+            check "dir:." myrepo
+            check "dir:/" project
+            check "/" project
+            check "dir:file:project" "file:project"
+            check "file:target/release/app" app
+            check "ghcr.io/org/app:1.0.0" app-1.0.0
+            check "./rpms/app-1.0-1.el9.x86_64.rpm" app-1.0-1.el9.x86_64
 
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
