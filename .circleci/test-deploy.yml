@@ -222,6 +222,9 @@ jobs:
             check "dir:/" project
             check "/" project
             check "dir:file:project" "file:project"
+            check "dir:.." names
+            check "dir:-s" "-s"
+            check "file:--help" "--help"
             check "file:target/release/app" app
             check "ghcr.io/org/app:1.0.0" app-1.0.0
             check "./rpms/app-1.0-1.el9.x86_64.rpm" app-1.0-1.el9.x86_64

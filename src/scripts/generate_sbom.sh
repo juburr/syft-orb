@@ -60,7 +60,7 @@ extract_source_basename() {
 
   # RPM file: strip .rpm extension
   if [[ "${source}" == *.rpm ]] || [[ "${source}" == *.RPM ]]; then
-    basename=$(basename "${source}")
+    basename=$(basename -- "${source}")
     basename="${basename%.rpm}"
     basename="${basename%.RPM}"
     echo "${basename}"
@@ -69,7 +69,7 @@ extract_source_basename() {
 
   # DEB file: strip .deb extension
   if [[ "${source}" == *.deb ]] || [[ "${source}" == *.DEB ]]; then
-    basename=$(basename "${source}")
+    basename=$(basename -- "${source}")
     basename="${basename%.deb}"
     basename="${basename%.DEB}"
     echo "${basename}"
@@ -96,17 +96,17 @@ extract_source_basename() {
   fi
 
   # Directory or file: strip the dir:/file: scheme, if any, then use the
-  # basename ("." and "/" fall back to the directory's own name or "project")
+  # basename ("." , ".." and "/" resolve to the directory's own name, or "project")
   local path="${source}"
   case "${source}" in
     dir:*) path="${source#dir:}" ;;
     file:*) path="${source#file:}" ;;
   esac
-  basename=$(basename "${path}")
-  if [[ "${basename}" == "." || "${basename}" == "/" ]]; then
+  basename=$(basename -- "${path}")
+  if [[ "${basename}" == "." || "${basename}" == ".." || "${basename}" == "/" ]]; then
     # Use the directory's own name or "project" as fallback
     local parent_dir
-    parent_dir=$(cd "${path}" 2>/dev/null && basename "$(pwd)")
+    parent_dir=$(cd -- "${path}" 2>/dev/null && basename -- "$(pwd)")
     if [[ -n "${parent_dir}" && "${parent_dir}" != "/" ]]; then
       echo "${parent_dir}"
     else
