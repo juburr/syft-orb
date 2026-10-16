@@ -80,7 +80,7 @@
 version: 2.1
 
 orbs:
-  syft: juburr/syft-orb@latest
+  syft: juburr/syft-orb@volatile
 ```
 
 **2. Add the `syft/sbom` job** to a workflow:
@@ -102,7 +102,7 @@ sboms/
 └── static-latest.spdx.json   # SPDX
 ```
 
-Each SBOM is pretty-printed to the job log and persisted to the workspace, ready for the next job to sign, scan, or upload. Want different formats? Ask for any mix of [output formats](#output-formats):
+Each SBOM is previewed in the job log and persisted to the workspace, ready for the next job to sign, scan, or upload. Want different formats? Ask for several [output formats](#output-formats) at once:
 
 ```yaml
 - syft/sbom:
@@ -112,7 +112,7 @@ Each SBOM is pretty-printed to the job log and persisted to the workspace, ready
 ```
 
 > [!TIP]
-> `@latest` is great for kicking the tyres. For production pipelines, pin a specific release from the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) so upgrades happen when you choose.
+> `@volatile` always resolves to the newest published release, which is handy for kicking the tyres. For production pipelines, pin a numeric version such as `@1.2.3`, or `@1.2` to pick up patch releases, so upgrades happen when you choose. The orb version badge above and the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) show the latest release. CircleCI does not accept `@latest`.
 
 ## 🧭 How It Works
 
@@ -156,7 +156,7 @@ List any of these in `output_formats`, comma-separated. Syft scans once and writ
 | CycloneDX JSON | `cyclonedx-json` | `.cdx.json` |
 | CycloneDX XML | `cyclonedx-xml` | `.cdx.xml` |
 | Syft JSON | `syft-json` | `.syft.json` |
-| Syft table / text | `syft-table`, `syft-text` | `.syft.txt` |
+| Syft table / text | `syft-table` or `syft-text` (not both: they write the same file) | `.syft.txt` |
 | GitHub dependency snapshot | `github-json` | `.github.json` |
 | Package URLs | `purls` | `.purls.txt` |
 | Go template (template path set in a `config` file) | `template` | `.txt` |
@@ -258,10 +258,11 @@ Directory scans pick up everything under the scan root, including build output, 
 Syft already ignores JavaScript lockfiles inside `node_modules`, but it still walks those trees and catalogs other ecosystems' manifests there (for example the `Cargo.lock` that native npm packages ship), so excluding them keeps the inventory accurate and the scan fast.
 
 ### Logging SBOMs
-Print SBOMs to the job output for review or debugging. JSON formats are pretty-printed with `jq`:
+Print SBOMs to the job output for review or debugging. JSON SBOMs are pretty-printed with `jq` and cut off after the first 100 lines; other formats are printed in full:
 
 ```yaml
-# Every SBOM in a directory, with the format detected from each file extension
+# Every SBOM in a directory, with the format detected from each file extension.
+# Template output (.txt) is skipped; log it with sbom_path instead.
 - syft/log_sbom:
     sbom_dir: sboms
 
@@ -276,7 +277,7 @@ Use the installation command to add the `syft` binary to your CircleCI job:
 
 ```yaml
 orbs:
-  syft: juburr/syft-orb@latest
+  syft: juburr/syft-orb@volatile # or pin a numeric version
 
 jobs:
   sbom_generation:
@@ -328,9 +329,9 @@ To run the `syft/sbom` job on arm64, pick an Arm resource class (the default `ci
 
 | Component | Type | What it does |
 | --- | --- | --- |
-| [`syft/install`](#syftinstall) | command | Installs a checksum-verified, cached Syft binary. Run it before the other commands. |
+| [`syft/install`](#syftinstall) | command | Installs a checksum-verified, cached Syft binary. Run it before `generate_sbom`. |
 | [`syft/generate_sbom`](#syftgenerate_sbom) | command | Scans one source and writes one or more SBOM formats. |
-| [`syft/log_sbom`](#syftlog_sbom) | command | Prints SBOMs to the job output, pretty-printing JSON with `jq`. |
+| [`syft/log_sbom`](#syftlog_sbom) | command | Prints SBOMs to the job output. JSON is pretty-printed with `jq` and cut off after 100 lines. |
 | [`syft/sbom`](#syftsbom) | job | Install, generate, log, and persist to the workspace, all in one job. |
 
 The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) lists every parameter with its current default, including the Syft version each orb release pins.
@@ -375,12 +376,12 @@ The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) list
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `sbom_dir` | | Log every SBOM in a directory, detecting each format from its file extension. |
+| `sbom_dir` | | Log the SBOMs in a directory, detecting each format from its file extension. Template output (`.txt`) is skipped; use `sbom_path` for it. |
 | `sbom_path` | | Log specific SBOM files. Wildcards are allowed if every match has the same format. |
 | `sbom_format` | `spdx-json` | Format of the `sbom_path` files. |
 | `pretty` | `true` | Pretty-print JSON SBOMs with `jq`. |
 
-Use either `sbom_dir` or `sbom_path`, not both.
+Use either `sbom_dir` or `sbom_path`, not both. JSON SBOMs are cut off after the first 100 lines; other formats are printed in full.
 
 </details>
 
@@ -400,7 +401,7 @@ Use either `sbom_dir` or `sbom_path`, not both.
 | `attach_workspace` | `true` | Attach the workspace before scanning, to reach upstream build artifacts. |
 | `workspace_root` | `.` | Where to attach the workspace. |
 | `persist_to_workspace` | `true` | Persist `output_dir` to the workspace afterwards. |
-| `log_sboms` | `true` | Pretty-print the generated SBOMs to the job output. |
+| `log_sboms` | `true` | Print the generated SBOMs to the job output, with JSON cut off after 100 lines. |
 | `cimg_tag` | `current-22.04` | Tag of the `cimg/base` executor image. |
 | `resource_class` | `medium` | Resource class. Use `arm.medium` or larger to run on arm64. |
 
