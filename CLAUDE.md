@@ -64,8 +64,11 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 
 YAML linting uses `.yamllint` config (extends "relaxed", 200-char line limit). Shell scripts are linted with shellcheck via the CI pipeline.
 
+Scripts pass parameter values to `circleci env subst` on stdin, as in `VALUE=$(printf '%s' "${PARAM_VALUE}" | circleci env subst)`. Passed as an argument, a value starting with `-` is parsed as a CLI flag. `tests/env_subst_test.sh` enforces this.
+
 ## Verification
 
 Before committing changes, verify work locally if tools are available on the system:
 - Run `shellcheck src/scripts/*.sh` to lint shell scripts
+- Run `bash tests/env_subst_test.sh` to check how scripts call `circleci env subst`
 - Run `circleci orb validate` to validate the orb structure

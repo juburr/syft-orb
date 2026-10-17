@@ -12,9 +12,9 @@ set +o history
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
 PRETTY="${PARAM_PRETTY}"
-SBOM_DIR=$(circleci env subst "${PARAM_SBOM_DIR}")
-SBOM_FORMAT=$(circleci env subst "${PARAM_SBOM_FORMAT}")
-SBOM_PATH=$(circleci env subst "${PARAM_SBOM_PATH}")
+SBOM_DIR=$(printf '%s' "${PARAM_SBOM_DIR}" | circleci env subst)
+SBOM_FORMAT=$(printf '%s' "${PARAM_SBOM_FORMAT}" | circleci env subst)
+SBOM_PATH=$(printf '%s' "${PARAM_SBOM_PATH}" | circleci env subst)
 
 # Print command parameters for debugging purposes.
 echo "Running SBOM logger with the following parameters:"
