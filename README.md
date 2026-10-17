@@ -345,8 +345,8 @@ The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) list
 | --- | --- | --- |
 | `version` | pinned per orb release | Syft version to install. |
 | `verify_checksums` | `strict` | `strict`, `known_versions` or `false`. See [Checksum verification](#checksum-verification). |
-| `caching` | `true` | Cache the Syft download, keyed by version and CPU architecture. |
-| `install_path` | `/home/circleci/bin` | Directory for the binary. It must not require root access; no trailing slash. |
+| `caching` | `true` | Cache the Syft download, keyed by version, CPU architecture and home directory. |
+| `install_path` | `$HOME/bin` | Absolute directory for the binary, created if needed and added to `PATH` when it isn't already there. It must not require root access. |
 
 </details>
 

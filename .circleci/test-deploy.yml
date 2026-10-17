@@ -1018,9 +1018,9 @@ jobs:
           paths:
             - workspace
 
-  # Test that checksum verification fails closed by default. CircleCI can't assert that
-  # a step fails without failing the job, so this runs the install script directly with
-  # the defaults declared by the install command and the sbom job.
+  # The install contract test (tests/install_test.sh, in the setup workflow)
+  # covers the install script. This checks that the sbom job, which passes its
+  # own verify_checksums to install, also defaults to strict.
   test-install-checksum-defaults:
     docker:
       - image: cimg/base:current-22.04
@@ -1038,82 +1038,33 @@ jobs:
               fi
             done
             echo "SUCCESS: Both the install command and sbom job default to strict"
-      - run:
-          name: "Verify an unlisted version fails by default without downloading"
-          command: |
-            SCRIPT="${PWD}/src/scripts/install.sh"
-            DEFAULT=$(awk '/^  verify_checksums:/{f=1; next} f && /^  [^ ]/{f=0} f && /^    default:/{print $2; exit}' src/commands/install.yml)
-            for mode in default unset; do
-              WORKDIR=$(mktemp -d)
-              cd "${WORKDIR}"
-              set +e
-              if [[ "${mode}" == "default" ]]; then
-                PARAM_INSTALL_PATH="${WORKDIR}" PARAM_VERIFY_CHECKSUMS="${DEFAULT}" PARAM_VERSION=0.0.0-unlisted \
-                  bash "${SCRIPT}" > install.log 2>&1
-              else
-                PARAM_INSTALL_PATH="${WORKDIR}" PARAM_VERSION=0.0.0-unlisted bash "${SCRIPT}" > install.log 2>&1
-              fi
-              rc=$?
-              set -e
-              cat install.log
-
-              if [[ ${rc} -eq 0 ]]; then
-                echo "ERROR: [${mode}] install succeeded for a version with no known checksum"
-                exit 1
-              fi
-              if ! grep -q "ERROR: No checksum available for version 0.0.0-unlisted" install.log; then
-                echo "ERROR: [${mode}] install failed, but not because of the missing checksum"
-                exit 1
-              fi
-              if [[ -e syft.tar.gz || -e syft ]]; then
-                echo "ERROR: [${mode}] an unverifiable binary was downloaded before failing"
-                exit 1
-              fi
-              echo "SUCCESS: [${mode}] unlisted version rejected before download (exit ${rc})"
-              cd - > /dev/null
-            done
-      - run:
-          name: "Verify known_versions remains an explicit opt-out"
-          command: |
-            SCRIPT="${PWD}/src/scripts/install.sh"
-            WORKDIR=$(mktemp -d)
-            cd "${WORKDIR}"
-            # The version doesn't exist upstream, so the download itself fails; this
-            # only checks that the checksum gate lets the opt-out through.
-            set +e
-            PARAM_INSTALL_PATH="${WORKDIR}" PARAM_VERIFY_CHECKSUMS=known_versions PARAM_VERSION=0.0.0-unlisted \
-              bash "${SCRIPT}" > install.log 2>&1
-            set -e
-            cat install.log
-            if ! grep -q "WARN: No checksum available for version 0.0.0-unlisted" install.log; then
-              echo "ERROR: known_versions did not pass the checksum gate"
-              exit 1
-            fi
-            if grep -q "^ERROR: No checksum available" install.log; then
-              echo "ERROR: known_versions was treated as strict"
-              exit 1
-            fi
-            echo "SUCCESS: known_versions opts out of the strict checksum gate"
-      - run:
-          name: "Verify an invalid verify_checksums value is rejected"
-          command: |
-            set +e
-            PARAM_INSTALL_PATH=/tmp PARAM_VERIFY_CHECKSUMS=yes PARAM_VERSION=1.52.0 \
-              bash src/scripts/install.sh > /tmp/invalid.log 2>&1
-            rc=$?
-            set -e
-            cat /tmp/invalid.log
-            if [[ ${rc} -eq 0 ]] || ! grep -q "Invalid verify_checksums value 'yes'" /tmp/invalid.log; then
-              echo "ERROR: invalid verify_checksums value was not rejected"
-              exit 1
-            fi
-            echo "SUCCESS: invalid value rejected"
       # A listed version still installs and verifies with the default.
       - syft-orb/install:
           caching: false
       - run:
           name: Verify default install still succeeds
           command: syft version
+
+  # An unverified install caches nothing, so the install command's save_cache
+  # step finds no ~/.cache/syft-orb to save. That must not fail the job.
+  test-install-unverified-no-cache:
+    docker:
+      - image: cimg/base:current-22.04
+    steps:
+      - syft-orb/install:
+          version: "1.51.0"
+          verify_checksums: "false"
+          caching: true
+      - run:
+          name: Verify nothing was cached
+          command: |
+            syft version
+            if [[ -e ~/.cache/syft-orb ]]; then
+              echo "ERROR: ~/.cache/syft-orb exists after an unverified install"
+              ls -R ~/.cache/syft-orb
+              exit 1
+            fi
+            echo "SUCCESS: nothing was cached, and save_cache accepted the missing path"
 
   # Test installation and scanning on a native arm64 machine executor.
   test-install-arm64-machine:
@@ -1122,11 +1073,8 @@ jobs:
     resource_class: arm.medium
     steps:
       - checkout
-      - run:
-          name: Ensure the default install path exists and is on PATH
-          command: |
-            mkdir -p /home/circleci/bin
-            echo 'export PATH="/home/circleci/bin:${PATH}"' >> "${BASH_ENV}"
+      # install creates install_path and adds it to the PATH of later steps,
+      # so the machine executor needs no preparation for it.
       - syft-orb/install
       - run:
           name: Verify the arm64 build of syft was installed
@@ -1156,68 +1104,6 @@ jobs:
               echo "SUCCESS: Found ${f}"
             done
 
-  # Test platform detection on any executor by faking uname. Also checks that a
-  # wrong-architecture tarball (e.g. a stale cache) fails checksum verification.
-  test-install-platform-mapping:
-    docker:
-      - image: cimg/base:current-22.04
-    steps:
-      - checkout
-      - run:
-          name: Create a fake uname
-          command: |
-            mkdir -p /tmp/fake-uname
-            printf '#!/bin/bash\ncase "$1" in\n  -s) echo "${FAKE_UNAME_S:-Linux}" ;;\n  -m) echo "${FAKE_UNAME_M}" ;;\n  *) /bin/uname "$@" ;;\nesac\n' > /tmp/fake-uname/uname
-            chmod +x /tmp/fake-uname/uname
-      - run:
-          name: "Verify aarch64 and arm64 select the verified linux_arm64 build"
-          command: |
-            SCRIPT="${PWD}/src/scripts/install.sh"
-            for machine in aarch64 arm64; do
-              WORKDIR=$(mktemp -d)
-              mkdir -p "${WORKDIR}/bin"
-              (cd "${WORKDIR}" && PATH="/tmp/fake-uname:${PATH}" FAKE_UNAME_M="${machine}" \
-                PARAM_INSTALL_PATH="${WORKDIR}/bin" PARAM_VERIFY_CHECKSUMS=strict PARAM_VERSION=1.52.0 \
-                bash "${SCRIPT}" > "${WORKDIR}/install.log" 2>&1) || { cat "${WORKDIR}/install.log"; exit 1; }
-              grep -E "PLATFORM|syft_1.52.0|Checksum verification" "${WORKDIR}/install.log"
-              grep -q "PLATFORM: linux_arm64" "${WORKDIR}/install.log"
-              grep -q "Checksum verification passed!" "${WORKDIR}/install.log"
-              file "${WORKDIR}/bin/syft" | tee /dev/stderr | grep -q "aarch64"
-              echo "SUCCESS: ${machine} -> linux_arm64"
-            done
-      - run:
-          name: "Verify unsupported platforms are hard errors"
-          command: |
-            SCRIPT="${PWD}/src/scripts/install.sh"
-            check_fails() {
-              local expected="$1"; shift
-              local log
-              log=$(mktemp)
-              if env PATH="/tmp/fake-uname:${PATH}" "$@" PARAM_INSTALL_PATH=/tmp PARAM_VERSION=1.52.0 \
-                  bash "${SCRIPT}" > "${log}" 2>&1; then
-                cat "${log}"; echo "ERROR: install succeeded on an unsupported platform"; exit 1
-              fi
-              grep "ERROR" "${log}"
-              grep -q "${expected}" "${log}" || { cat "${log}"; echo "ERROR: unexpected failure"; exit 1; }
-            }
-            check_fails "Unsupported CPU architecture 'ppc64le'" FAKE_UNAME_M=ppc64le
-            check_fails "Unsupported CPU architecture 'armv7l'" FAKE_UNAME_M=armv7l
-            check_fails "Unsupported operating system 'Darwin'" FAKE_UNAME_S=Darwin FAKE_UNAME_M=arm64
-            echo "SUCCESS: unsupported platforms rejected"
-      - run:
-          name: "Verify a wrong-architecture cached tarball fails verification"
-          command: |
-            SCRIPT="${PWD}/src/scripts/install.sh"
-            WORKDIR=$(mktemp -d)
-            cd "${WORKDIR}"
-            curl -sSfL -o syft.tar.gz https://github.com/anchore/syft/releases/download/v1.52.0/syft_1.52.0_linux_amd64.tar.gz
-            if PATH="/tmp/fake-uname:${PATH}" FAKE_UNAME_M=aarch64 PARAM_INSTALL_PATH="${WORKDIR}" \
-                PARAM_VERSION=1.52.0 bash "${SCRIPT}" > install.log 2>&1; then
-              cat install.log; echo "ERROR: amd64 binary accepted for linux_arm64"; exit 1
-            fi
-            grep -q "ERROR: Checksum verification failed!" install.log || { cat install.log; exit 1; }
-            echo "SUCCESS: amd64 binary rejected for linux_arm64"
-
 workflows:
   test-deploy:
     jobs:
@@ -1229,7 +1115,7 @@ workflows:
           filters: *filters
       - test-install-arm64-machine:
           filters: *filters
-      - test-install-platform-mapping:
+      - test-install-unverified-no-cache:
           filters: *filters
 
       # Test the sbom job on an arm64 Docker resource class
@@ -1342,7 +1228,7 @@ workflows:
             - command-test
             - test-install-checksum-defaults
             - test-install-arm64-machine
-            - test-install-platform-mapping
+            - test-install-unverified-no-cache
             - test-sbom-container-arm64
             - test-rpm-packages
             - test-scope-control
