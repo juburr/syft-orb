@@ -4,16 +4,16 @@ set -e
 set +o history
 set -o pipefail
 
-# Ensure CircleCI environment variables can be passed in as orb parameters
-BASE_PATH=$(circleci env subst "${PARAM_BASE_PATH}")
-ENRICH=$(circleci env subst "${PARAM_ENRICH}")
-SOURCE=$(circleci env subst "${PARAM_SOURCE}")
-OUTPUT_DIR=$(circleci env subst "${PARAM_OUTPUT_DIR}")
-OUTPUT_FORMATS=$(circleci env subst "${PARAM_OUTPUT_FORMATS}")
-SCOPE=$(circleci env subst "${PARAM_SCOPE}")
-CONFIG=$(circleci env subst "${PARAM_CONFIG}")
-EXCLUDE=$(circleci env subst "${PARAM_EXCLUDE}")
-# Passed via stdin: values like "-file" would otherwise be parsed as CLI flags.
+# Ensure CircleCI environment variables can be passed in as orb parameters.
+# Values are passed via stdin: values like "-file" would otherwise be parsed as CLI flags.
+BASE_PATH=$(printf '%s' "${PARAM_BASE_PATH}" | circleci env subst)
+ENRICH=$(printf '%s' "${PARAM_ENRICH}" | circleci env subst)
+SOURCE=$(printf '%s' "${PARAM_SOURCE}" | circleci env subst)
+OUTPUT_DIR=$(printf '%s' "${PARAM_OUTPUT_DIR}" | circleci env subst)
+OUTPUT_FORMATS=$(printf '%s' "${PARAM_OUTPUT_FORMATS}" | circleci env subst)
+SCOPE=$(printf '%s' "${PARAM_SCOPE}" | circleci env subst)
+CONFIG=$(printf '%s' "${PARAM_CONFIG}" | circleci env subst)
+EXCLUDE=$(printf '%s' "${PARAM_EXCLUDE}" | circleci env subst)
 SELECT_CATALOGERS=$(printf '%s' "${PARAM_SELECT_CATALOGERS}" | circleci env subst)
 
 # Print command parameters for debugging purposes.
