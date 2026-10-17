@@ -40,7 +40,7 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 
 ### Key Implementation Details
 
-**`scripts/install.sh`**: Downloads the linux amd64 or arm64 syft build (from `uname -m`) from GitHub releases with SHA-512 checksum verification. Maintains a checksum lookup table for 200+ versions, keyed `<version>_linux_<arch>`. Three verification modes: `false`, `known_versions`, `strict`.
+**`scripts/install.sh`**: Installs the linux amd64 or arm64 syft build (from `uname -m`) from GitHub releases with SHA-512 checksum verification. It follows the layout every juburr orb's install.sh shares: a tool definition (asset names, URLs, archive member, version command), a shared install logic block that must stay identical across the orbs, and a checksum table keyed `"<version>/<arch>"`. Three verification modes: `false`, `known_versions`, `strict` (default, fails before downloading an unlisted version). `tests/install_test.sh` is the install contract test shared by the orbs; `src/scripts/install_hash.sh -v <version>` prints new table entries after checking the release's signed checksums (needs cosign).
 
 **`scripts/generate_sbom.sh`**: Core SBOM generation logic with:
 - Smart basename extraction for auto-generated filenames

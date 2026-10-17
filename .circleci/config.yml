@@ -9,6 +9,14 @@ filters: &filters
     only: /.*/
 
 jobs:
+  test-install:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Run install contract tests
+          command: bash tests/install_test.sh
   test-env-subst:
     docker:
       - image: cimg/base:current
@@ -21,6 +29,8 @@ jobs:
 workflows:
   lint-pack:
     jobs:
+      - test-install:
+          filters: *filters
       - test-env-subst:
           filters: *filters
       - orb-tools/lint:
@@ -36,5 +46,5 @@ workflows:
           pipeline_number: << pipeline.number >>
           vcs_type: << pipeline.project.type >>
           orb_name: syft-orb
-          requires: [test-env-subst, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
+          requires: [test-install, test-env-subst, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
           filters: *filters
