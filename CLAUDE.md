@@ -48,12 +48,13 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 - RPM extraction via `rpm2archive | tar` (supports 4GB+ files)
 - DEB extraction via `dpkg-deb`
 - Automatic tool installation if missing (rpm, dpkg)
+- Extraction scratch files from `mktemp`, removed by the script's single EXIT trap whether the scan passes or fails
 
 **`scripts/log_sbom.sh`**: Logs every SBOM in `sbom_dir`, or the space-separated files/globs in `sbom_file`. In both modes a file is JSON when its name ends in `.json` (there is no format parameter); JSON is pretty-printed with jq and cut off after 100 lines.
 
 ### CI Pipeline (`.circleci/`)
 
-- `config.yml` - Main pipeline: lint, pack, review, shellcheck
+- `config.yml` - Main pipeline: lint, pack, review, shellcheck, and the `tests/` scripts
 - `test-deploy.yml` - Comprehensive test suite with:
   - Command tests (7 scenarios)
   - RPM package tests (builds test packages for RHEL 7/8/9/10)
@@ -66,9 +67,20 @@ YAML linting uses `.yamllint` config (extends "relaxed", 200-char line limit). S
 
 Scripts pass parameter values to `circleci env subst` on stdin, as in `VALUE=$(printf '%s' "${PARAM_VALUE}" | circleci env subst)`. Passed as an argument, a value starting with `-` is parsed as a CLI flag. `tests/env_subst_test.sh` enforces this.
 
+## Shell conventions
+
+Every script in `src/scripts/` except the shared install code follows the conventions all juburr orbs share. `tests/shell_conventions_test.sh` checks the mechanical ones; it is identical in every orb, so never edit it.
+
+- Line 1 is `#!/bin/bash` and the first command is `set -euo pipefail`. No `set +o history`, never xtrace.
+- Under `-u`, use `${VAR:-}` for variables that may be unset (`CIRCLE_*`, `TMPDIR`, optional env vars). `PARAM_*` values the command YAML always sets are read directly, so CI steps that run a script directly must set every one of them. Under `-e`/`pipefail`, watch `grep -q` or `head` ending a pipeline early (SIGPIPE) and tools whose failure the old code ignored.
+- `ERROR: ` and `WARN: ` messages go to stderr (`>&2` on every line of the message); everything else goes to stdout. Every non-zero exit prints an `ERROR:` line first, unless the failing tool already explained itself.
+- `$BASH_ENV` exports use `printf 'export %s=%q\n'`; `eval` only runs orb code (`"${NAME_LIB}"`, `"${NAME_SCRIPT}"`). Secrets never go on a command line, and curl that sends credentials or fetches trusted content uses `--fail` and `--proto '=https'`.
+- Temporary files and directories come from `mktemp` and are removed by one EXIT trap per script (a second `trap ... EXIT` replaces the first).
+
 ## Verification
 
 Before committing changes, verify work locally if tools are available on the system:
 - Run `shellcheck src/scripts/*.sh` to lint shell scripts
 - Run `bash tests/env_subst_test.sh` to check how scripts call `circleci env subst`
+- Run `bash tests/shell_conventions_test.sh` to check the shell conventions
 - Run `circleci orb validate` to validate the orb structure

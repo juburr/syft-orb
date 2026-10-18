@@ -1,8 +1,6 @@
 #!/bin/bash
 
-set -e
-set +o history
-set -o pipefail
+set -euo pipefail
 
 # Ensure CircleCI environment variables can be passed in as orb parameters.
 # Values are passed via stdin: values like "-file" would otherwise be parsed as CLI flags.
@@ -33,7 +31,7 @@ echo ""
 
 # Ensure Syft exists
 if ! command -v syft >/dev/null 2>&1; then
-  echo "ERROR: syft not found in PATH; please run the syft/install command first"
+  echo "ERROR: syft not found in PATH; please run the syft/install command first" >&2
   exit 1
 fi
 
@@ -41,6 +39,21 @@ fi
 runpkg() {
   if [[ $EUID -ne 0 ]] && command -v sudo >/dev/null 2>&1; then sudo "$@"; else "$@"; fi
 }
+
+# Scratch files for RPM and DEB extraction. They are removed on exit, whether
+# the scan passes or fails. Removal is best effort, so it can't change the
+# script's exit status.
+TMP_SCAN_DIR=""
+TMP_ARCHIVE=""
+cleanup() {
+  if [[ -n "${TMP_ARCHIVE}" ]]; then
+    rm -f -- "${TMP_ARCHIVE}" || true
+  fi
+  if [[ -n "${TMP_SCAN_DIR}" ]]; then
+    rm -rf -- "${TMP_SCAN_DIR}" || true
+  fi
+}
+trap cleanup EXIT
 
 # Split a comma- or newline-separated list of glob patterns into EXCLUDE_PATTERNS.
 # Commas inside {...} are kept, so doublestar alternations such as
@@ -80,7 +93,7 @@ fi
 # directory, which would otherwise break a relative path.
 if [[ -n "${CONFIG}" ]]; then
   if [[ ! -f "${CONFIG}" ]]; then
-    echo "ERROR: syft config file not found: ${CONFIG}"
+    echo "ERROR: syft config file not found: ${CONFIG}" >&2
     exit 1
   fi
   CONFIG=$(realpath "${CONFIG}")
@@ -227,7 +240,7 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]] || \
 
     case ${#matched_files[@]} in
       0)
-        echo "ERROR: No files matched pattern '$SOURCE'"
+        echo "ERROR: No files matched pattern '$SOURCE'" >&2
         exit 1
         ;;
       1)
@@ -235,8 +248,8 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]] || \
         echo "  Expanded SOURCE: $SOURCE"
         ;;
       *)
-        echo "ERROR: Multiple files matched pattern '$SOURCE'"
-        printf '  - %s\n' "${matched_files[@]}"
+        echo "ERROR: Multiple files matched pattern '$SOURCE'" >&2
+        printf '  - %s\n' "${matched_files[@]}" >&2
         exit 1
         ;;
     esac
@@ -251,8 +264,8 @@ IFS=',' read -ra FORMAT_ARRAY <<< "${OUTPUT_FORMATS}"
 
 # Validate that we have at least one format
 if [[ ${#FORMAT_ARRAY[@]} -eq 0 ]]; then
-  echo "ERROR: No output formats specified. Please provide at least one format."
-  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}"
+  echo "ERROR: No output formats specified. Please provide at least one format." >&2
+  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}" >&2
   exit 1
 fi
 
@@ -278,22 +291,22 @@ done
 
 # Report any invalid formats
 if [[ ${#INVALID_FORMATS[@]} -gt 0 ]]; then
-  echo "ERROR: Unsupported output format(s) specified:"
+  echo "ERROR: Unsupported output format(s) specified:" >&2
   for fmt in "${INVALID_FORMATS[@]}"; do
-    echo "  - '${fmt}'"
+    echo "  - '${fmt}'" >&2
   done
-  echo ""
-  echo "Supported formats:"
+  echo "" >&2
+  echo "Supported formats:" >&2
   for fmt in "${!FORMAT_SUFFIXES[@]}"; do
-    echo "  - ${fmt}"
+    echo "  - ${fmt}" >&2
   done
   exit 1
 fi
 
 # Check we still have valid formats after filtering
 if [[ ${#VALID_FORMATS[@]} -eq 0 ]]; then
-  echo "ERROR: No valid output formats specified after parsing."
-  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}"
+  echo "ERROR: No valid output formats specified after parsing." >&2
+  echo "  Supported formats: ${!FORMAT_SUFFIXES[*]}" >&2
   exit 1
 fi
 
@@ -346,11 +359,11 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
       runpkg apt-get update
       runpkg apt-get install -y rpm
     else
-      echo "Unable to install rpm2archive automatically. Please install 'rpm'."
+      echo "ERROR: Unable to install rpm2archive automatically. Please install 'rpm'." >&2
       exit 1
     fi
     command -v rpm2archive >/dev/null 2>&1 || {
-      echo "rpm installed but rpm2archive still missing (older distro?)."; exit 1;
+      echo "ERROR: rpm installed but rpm2archive still missing (older distro?)." >&2; exit 1;
     }
   fi
 
@@ -368,7 +381,7 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
       runpkg apt-get update
       runpkg apt-get install -y tar
     else
-      echo "Unable to install tar. Please install it manually."
+      echo "ERROR: Unable to install tar. Please install it manually." >&2
       exit 1
     fi
     echo "tar installed successfully."
@@ -382,7 +395,6 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
   TMP_ARCHIVE="$(mktemp)"
   echo "  TMP_ARCHIVE: ${TMP_ARCHIVE}"
-  trap 'rm -f "$TMP_ARCHIVE"' EXIT
 
   # Extract the RPM to a TAR archive first
   # The "rpm2archive | tar" strategy is a workaround for allow compatibility with
@@ -400,7 +412,9 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   tar_args+=(-f "$TMP_ARCHIVE")
   tar_args+=(-C "$TMP_SCAN_DIR")
   tar_args+=(--no-same-owner --no-same-permissions)
-  if tar --help 2>&1 | grep -q -- 'delay-directory-restore'; then
+  # grep reads all of the help text: with -q it could exit before tar finished
+  # writing, and pipefail would then report tar's SIGPIPE as a failed match.
+  if tar --help 2>&1 | grep -- 'delay-directory-restore' > /dev/null; then
     # May not be supported on some distros such as BusyBox
     tar_args+=(--delay-directory-restore)
   fi
@@ -452,11 +466,11 @@ if [[ "${SOURCE}" == *.deb ]] || [[ "${SOURCE}" == *.DEB ]]; then
       echo "Installing via yum (package: dpkg)..."
       runpkg yum install -y dpkg
     else
-      echo "Unable to install dpkg-deb automatically. Please install 'dpkg'."
+      echo "ERROR: Unable to install dpkg-deb automatically. Please install 'dpkg'." >&2
       exit 1
     fi
     command -v dpkg-deb >/dev/null 2>&1 || {
-      echo "dpkg installed but dpkg-deb still missing."; exit 1;
+      echo "ERROR: dpkg installed but dpkg-deb still missing." >&2; exit 1;
     }
   fi
 
@@ -535,7 +549,7 @@ syft "${syft_args[@]}"
 if [[ -n "${TMP_SCAN_DIR}" ]]; then
   echo "Cleaning up temporary directory..."
   popd > /dev/null
-  rm -rf "${TMP_SCAN_DIR}"
+  cleanup
 fi
 
 echo "Done."

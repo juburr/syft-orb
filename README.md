@@ -426,6 +426,8 @@ The next release renames this job and these parameters:
 
 Behavior change: `log_sbom` no longer takes the format of `sbom_file` from a parameter. Each file is treated as JSON when its name ends in `.json`, the same rule `sbom_dir` already used, so the files listed in one `sbom_file` no longer have to share a format.
 
+Behavior change: `ERROR:` and `WARN:` messages now go to stderr, and `log_sbom` prefixes a missing `sbom_file` entry with `WARN:` instead of `WARNING:`. If you capture a step's stdout and search it for these messages, capture stderr too (`2>&1`).
+
 ## 🔒 Info for Security Teams
 
 ### Required external access

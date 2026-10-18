@@ -25,6 +25,14 @@ jobs:
       - run:
           name: Run circleci env subst tests
           command: bash tests/env_subst_test.sh
+  test-shell-conventions:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Run shell conventions tests
+          command: bash tests/shell_conventions_test.sh
 
 workflows:
   lint-pack:
@@ -32,6 +40,8 @@ workflows:
       - test-install:
           filters: *filters
       - test-env-subst:
+          filters: *filters
+      - test-shell-conventions:
           filters: *filters
       - orb-tools/lint:
           filters: *filters
@@ -46,5 +56,5 @@ workflows:
           pipeline_number: << pipeline.number >>
           vcs_type: << pipeline.project.type >>
           orb_name: syft-orb
-          requires: [test-install, test-env-subst, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
+          requires: [test-install, test-env-subst, test-shell-conventions, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
           filters: *filters

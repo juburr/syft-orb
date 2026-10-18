@@ -9,8 +9,7 @@
 # In both modes, a file is treated as JSON when its name ends in .json.
 #
 
-set -e
-set +o history
+set -euo pipefail
 
 # Ensure CircleCI environment variables can be passed in as orb parameters
 PRETTY="${PARAM_PRETTY}"
@@ -45,7 +44,9 @@ log_sbom_file() {
 
   if [[ "${is_json}" == "true" && "${PRETTY:-0}" == "1" ]]; then
     if command -v jq &> /dev/null; then
-      jq '.' "$file" | head -100
+      # head stops reading after 100 lines, which kills jq with SIGPIPE, and jq
+      # fails on a file that isn't valid JSON. Neither stops the log.
+      { jq '.' "$file" || true; } | head -100
     else
       head -100 "$file"
     fi
@@ -61,7 +62,7 @@ log_sbom_file() {
 # Directory mode: log all SBOM files in the directory
 if [[ -n "${SBOM_DIR}" ]]; then
   if [[ ! -d "${SBOM_DIR}" ]]; then
-    echo "ERROR: Directory '${SBOM_DIR}' does not exist"
+    echo "ERROR: Directory '${SBOM_DIR}' does not exist" >&2
     exit 1
   fi
 
@@ -108,7 +109,7 @@ fi
 
 # File mode: log specific file(s)
 if [[ -z "${SBOM_FILE}" ]]; then
-  echo "ERROR: Either sbom_dir or sbom_file must be provided"
+  echo "ERROR: Either sbom_dir or sbom_file must be provided" >&2
   exit 1
 fi
 
@@ -118,6 +119,6 @@ for file in ${SBOM_FILE}; do
   if [[ -f "$file" ]]; then
     log_sbom_file "$file"
   else
-    echo "WARNING: File not found: $file"
+    echo "WARN: File not found: $file" >&2
   fi
 done
