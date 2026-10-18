@@ -252,17 +252,18 @@ jobs:
             seq 1 150 > file-logs/long.json
             seq 1 150 > file-logs/long.spdx
             PARAM_PRETTY=false PARAM_SBOM_DIR="" PARAM_SBOM_FILE="file-logs/*.json file-logs/long.spdx file-logs/missing.cdx.json" \
-              bash src/scripts/log_sbom.sh > file-logs.out 2>&1
+              bash src/scripts/log_sbom.sh > file-logs.out 2> file-logs.err
             JSON_LINES=$(sed -n '/^=== long.json ===$/,/^$/p' file-logs.out | grep -cx '[0-9][0-9]*')
             OTHER_LINES=$(sed -n '/^=== long.spdx ===$/,/^$/p' file-logs.out | grep -cx '[0-9][0-9]*')
             if [[ "${JSON_LINES}" -ne 100 || "${OTHER_LINES}" -ne 150 ]]; then
-              cat file-logs.out
+              cat file-logs.out file-logs.err
               echo "ERROR: expected 100 JSON lines and 150 other lines, got ${JSON_LINES} and ${OTHER_LINES}"
               exit 1
             fi
-            if ! grep -q "WARNING: File not found: file-logs/missing.cdx.json" file-logs.out; then
-              cat file-logs.out
-              echo "ERROR: missing sbom_file entry was not reported"
+            # Warnings go to stderr.
+            if ! grep -q "^WARN: File not found: file-logs/missing.cdx.json$" file-logs.err || grep -q "WARN" file-logs.out; then
+              cat file-logs.out file-logs.err
+              echo "ERROR: missing sbom_file entry was not reported on stderr"
               exit 1
             fi
             echo "SUCCESS: sbom_file logs each file by its extension"
@@ -292,14 +293,53 @@ jobs:
             echo demo > /tmp/dashdeb/root/opt/demo/file.txt
             cd /tmp/dashdeb
             dpkg-deb --build root ./-x.deb
-            PARAM_BASE_PATH="" PARAM_ENRICH=none PARAM_SOURCE="file:-x.deb" PARAM_OUTPUT_DIR=out \
-              PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed bash "${SCRIPT}"
+            PARAM_BASE_PATH="" PARAM_CONFIG="" PARAM_ENRICH=none PARAM_EXCLUDE="" PARAM_SOURCE="file:-x.deb" PARAM_OUTPUT_DIR=out \
+              PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed PARAM_SELECT_CATALOGERS="" bash "${SCRIPT}"
             if [[ ! -f "out/-x.spdx.json" ]]; then
               echo "ERROR: Expected out/-x.spdx.json"
               ls -la out/ || true
               exit 1
             fi
             echo "SUCCESS: Found out/-x.spdx.json"
+      - run:
+          name: "Verify a failed DEB scan removes its scratch files and reports errors on stderr"
+          command: |
+            SCRIPT="${PWD}/src/scripts/generate_sbom.sh"
+            mkdir -p /tmp/failing-syft /tmp/scratch-check
+            printf '#!/bin/bash\nexit 3\n' > /tmp/failing-syft/syft
+            chmod +x /tmp/failing-syft/syft
+            cd /tmp/dashdeb
+            gen() {
+              TMPDIR=/tmp/scratch-check PARAM_BASE_PATH="" PARAM_CONFIG="" PARAM_ENRICH=none PARAM_EXCLUDE="" \
+                PARAM_SOURCE="$1" PARAM_OUTPUT_DIR=failed-out PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed \
+                PARAM_SELECT_CATALOGERS="" bash "${SCRIPT}"
+            }
+
+            # The extraction directory is removed when syft fails, and syft's exit code is passed on.
+            rc=0
+            PATH="/tmp/failing-syft:${PATH}" gen ./-x.deb > failed.out 2>&1 || rc=$?
+            if [[ "${rc}" -ne 3 ]]; then
+              cat failed.out
+              echo "ERROR: expected the failed scan to exit with syft's code 3, got ${rc}"
+              exit 1
+            fi
+            if [[ -n "$(ls -A /tmp/scratch-check)" ]]; then
+              ls -la /tmp/scratch-check
+              echo "ERROR: the failed scan left its scratch files behind"
+              exit 1
+            fi
+            echo "SUCCESS: scratch files removed after a failed scan"
+
+            # Errors go to stderr.
+            rc=0
+            gen "./missing-*.deb" > nomatch.out 2> nomatch.err || rc=$?
+            if [[ "${rc}" -eq 0 ]] || ! grep -q "^ERROR: No files matched pattern './missing-\*.deb'$" nomatch.err \
+              || grep -q "ERROR" nomatch.out; then
+              cat nomatch.out nomatch.err
+              echo "ERROR: an unmatched pattern was not reported on stderr"
+              exit 1
+            fi
+            echo "SUCCESS: errors are reported on stderr"
 
   # Test RPM package handling with fictitious packages
   test-rpm-packages:
@@ -975,8 +1015,8 @@ jobs:
             SCRIPT="${PWD}/src/scripts/generate_sbom.sh"
             mkdir -p /tmp/empty-scan && cd /tmp/empty-scan
             scan() {
-              PARAM_BASE_PATH="" PARAM_ENRICH=none PARAM_SOURCE="dir:." PARAM_OUTPUT_DIR=out \
-                PARAM_OUTPUT_FORMATS=syft-json PARAM_SCOPE=squashed bash "${SCRIPT}" > "$1" 2>&1
+              PARAM_BASE_PATH="" PARAM_CONFIG="" PARAM_ENRICH=none PARAM_EXCLUDE="" PARAM_SOURCE="dir:." PARAM_OUTPUT_DIR=out \
+                PARAM_OUTPUT_FORMATS=syft-json PARAM_SCOPE=squashed PARAM_SELECT_CATALOGERS="" bash "${SCRIPT}" > "$1" 2>&1
             }
 
             scan default.log
