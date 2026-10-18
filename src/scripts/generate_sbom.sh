@@ -284,8 +284,10 @@ for format in "${FORMAT_ARRAY[@]}"; do
     continue
   fi
 
-  # Check if format is in the supported list
-  if [[ -v FORMAT_SUFFIXES["${format}"] ]]; then
+  # Check if format is in the supported list. Not [[ -v array[key] ]]: bash
+  # 4.0 and 4.1 have no -v and 4.2's takes no subscript, so the script stopped
+  # here on a syntax error, and the EXIT trap's status made the step pass.
+  if [[ -n "${FORMAT_SUFFIXES[${format}]+set}" ]]; then
     VALID_FORMATS+=("${format}")
   else
     INVALID_FORMATS+=("${format}")
