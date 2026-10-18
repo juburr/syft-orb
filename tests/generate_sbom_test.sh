@@ -84,20 +84,21 @@ printf 'Package: demo\nVersion: 1.0\nArchitecture: all\nMaintainer: test <test@e
 echo "demo" > "${WORK}/debroot/usr/share/doc/demo/README"
 dpkg-deb --build "${WORK}/debroot" "${WORK}/demo.deb" > /dev/null
 
-# check_deb_relative_tmpdir NAME SYFT_EXIT: scans demo.deb with TMPDIR=scratch
-# and a syft that exits SYFT_EXIT.
+# check_deb_relative_tmpdir NAME SYFT_EXIT [CDPATH]: scans demo.deb with
+# TMPDIR=scratch, a syft that exits SYFT_EXIT, and CDPATH (none by default).
 check_deb_relative_tmpdir() {
-    local name=$1 syft_exit=$2 rc=0 base_path
+    local name=$1 syft_exit=$2 cdpath=${3:-} rc=0 base_path
     rm -rf "${WORK}/syft.args" "${WORK}/scratch"
     mkdir "${WORK}/scratch"
     (
         cd "${WORK}"
-        PATH="${WORK}/bin:${PATH}" TMPDIR=scratch SYFT_EXIT="${syft_exit}" PARAM_BASE_PATH="" \
+        PATH="${WORK}/bin:${PATH}" TMPDIR=scratch CDPATH="${cdpath}" SYFT_EXIT="${syft_exit}" PARAM_BASE_PATH="" \
             PARAM_CONFIG="" PARAM_ENRICH=all PARAM_EXCLUDE="" PARAM_SOURCE=demo.deb PARAM_OUTPUT_DIR="" \
             PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed PARAM_SELECT_CATALOGERS="" \
             bash "${ROOT}/src/scripts/generate_sbom.sh"
     ) > "${WORK}/output.txt" 2>&1 || rc=$?
-    base_path=$(sed -n '/^--base-path$/{n;p;}' "${WORK}/syft.args" 2> /dev/null)
+    # syft.args is missing when the script failed before running syft.
+    base_path=$(sed -n '/^--base-path$/{n;p;}' "${WORK}/syft.args" 2> /dev/null || true)
     if [[ ${rc} -ne ${syft_exit} ]]; then
         echo "FAIL: ${name}: generate_sbom.sh exited ${rc}, wanted ${syft_exit}:"
         sed 's/^/  /' "${WORK}/output.txt"
@@ -115,6 +116,9 @@ check_deb_relative_tmpdir() {
 
 check_deb_relative_tmpdir "a DEB scan with a relative TMPDIR uses and removes an absolute scratch path" 0
 check_deb_relative_tmpdir "a failed DEB scan with a relative TMPDIR still removes its scratch directory" 1
+# With CDPATH set, cd prints the directory it found, which must not end up in
+# the scratch path.
+check_deb_relative_tmpdir "a DEB scan with a relative TMPDIR and CDPATH set uses one absolute scratch path" 0 "${WORK}"
 
 if [[ "${FAILURES}" -gt 0 ]]; then
     echo "${FAILURES} failure(s)"

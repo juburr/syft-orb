@@ -399,7 +399,8 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   TMP_SCAN_DIR=$(mktemp -d)
   # Made absolute because the scan cds into it: with a relative TMPDIR, a
   # relative path would point below itself for --base-path and the cleanup.
-  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" && pwd)
+  # cd's output is discarded: it prints the path when CDPATH applies.
+  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" >/dev/null && pwd)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
   TMP_ARCHIVE="$(mktemp)"
   echo "  TMP_ARCHIVE: ${TMP_ARCHIVE}"
@@ -489,7 +490,8 @@ if [[ "${SOURCE}" == *.deb ]] || [[ "${SOURCE}" == *.DEB ]]; then
   TMP_SCAN_DIR=$(mktemp -d)
   # Made absolute because the scan cds into it: with a relative TMPDIR, a
   # relative path would point below itself for --base-path and the cleanup.
-  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" && pwd)
+  # cd's output is discarded: it prints the path when CDPATH applies.
+  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" >/dev/null && pwd)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
 
   # Extract the DEB package contents
