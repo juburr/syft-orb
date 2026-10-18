@@ -90,7 +90,7 @@ fi
 
 # Format suffix mapping for auto-generated output filenames.
 # Directory logging in log_sbom.sh follows these suffixes. template uses a
-# generic .txt suffix, so log_sbom only prints template output via sbom_path.
+# generic .txt suffix, so log_sbom only prints template output via sbom_file.
 declare -A FORMAT_SUFFIXES=(
   ["spdx-json"]=".spdx.json"
   ["cyclonedx-json"]=".cdx.json"

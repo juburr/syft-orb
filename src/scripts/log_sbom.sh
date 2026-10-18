@@ -3,8 +3,10 @@
 # log_sbom.sh - Print SBOM contents to CircleCI output for logging/debugging
 #
 # Supports two modes:
-# 1. Directory mode (sbom_dir): Logs all SBOM files in a directory with auto-detected formats
-# 2. Path mode (sbom_path): Logs specific file(s) with explicit format (supports wildcards)
+# 1. Directory mode (sbom_dir): Logs all SBOM files in a directory
+# 2. File mode (sbom_file): Logs specific file(s), space-separated (supports wildcards)
+#
+# In both modes, a file is treated as JSON when its name ends in .json.
 #
 
 set -e
@@ -13,15 +15,13 @@ set +o history
 # Ensure CircleCI environment variables can be passed in as orb parameters
 PRETTY="${PARAM_PRETTY}"
 SBOM_DIR=$(printf '%s' "${PARAM_SBOM_DIR}" | circleci env subst)
-SBOM_FORMAT=$(printf '%s' "${PARAM_SBOM_FORMAT}" | circleci env subst)
-SBOM_PATH=$(printf '%s' "${PARAM_SBOM_PATH}" | circleci env subst)
+SBOM_FILE=$(printf '%s' "${PARAM_SBOM_FILE}" | circleci env subst)
 
 # Print command parameters for debugging purposes.
 echo "Running SBOM logger with the following parameters:"
 echo "  PRETTY: ${PRETTY}"
 echo "  SBOM_DIR: ${SBOM_DIR}"
-echo "  SBOM_FORMAT: ${SBOM_FORMAT}"
-echo "  SBOM_PATH: ${SBOM_PATH}"
+echo "  SBOM_FILE: ${SBOM_FILE}"
 echo ""
 
 # Helper function to determine if a file is JSON-based from its extension
@@ -33,10 +33,13 @@ is_json_file() {
   esac
 }
 
-# Helper function to log a single SBOM file
+# Helper function to log a single SBOM file, detecting JSON from its extension
 log_sbom_file() {
   local file="$1"
-  local is_json="$2"
+  local is_json="false"
+  if is_json_file "${file}"; then
+    is_json="true"
+  fi
 
   echo "=== $(basename "$file") ==="
 
@@ -71,7 +74,7 @@ if [[ -n "${SBOM_DIR}" ]]; then
   echo ""
 
   # Suffixes match generate_sbom.sh. template writes a generic .txt file, so it is
-  # only logged when the caller passes sbom_path.
+  # only logged when the caller passes sbom_file.
   sbom_suffixes=(
     ".spdx.json"
     ".cdx.json"
@@ -89,11 +92,7 @@ if [[ -n "${SBOM_DIR}" ]]; then
     for sbom in "${SBOM_DIR}"/*"${suffix}"; do
       if [[ -f "$sbom" ]]; then
         found_files=$((found_files + 1))
-        if is_json_file "$sbom"; then
-          log_sbom_file "$sbom" "true"
-        else
-          log_sbom_file "$sbom" "false"
-        fi
+        log_sbom_file "$sbom"
       fi
     done
   done
@@ -107,23 +106,17 @@ if [[ -n "${SBOM_DIR}" ]]; then
   exit 0
 fi
 
-# Path mode: log specific file(s) with explicit format
-if [[ -z "${SBOM_PATH}" ]]; then
-  echo "ERROR: Either sbom_dir or sbom_path must be provided"
+# File mode: log specific file(s)
+if [[ -z "${SBOM_FILE}" ]]; then
+  echo "ERROR: Either sbom_dir or sbom_file must be provided"
   exit 1
 fi
 
-# Determine if the format is JSON-based
-is_json="false"
-if [[ "${SBOM_FORMAT}" == *"json"* ]]; then
-  is_json="true"
-fi
-
-# Log files matching the path pattern (supports wildcards)
+# Split on spaces and expand wildcards, so several files or globs can be given
 # shellcheck disable=SC2086
-for file in ${SBOM_PATH}; do
+for file in ${SBOM_FILE}; do
   if [[ -f "$file" ]]; then
-    log_sbom_file "$file" "$is_json"
+    log_sbom_file "$file"
   else
     echo "WARNING: File not found: $file"
   fi

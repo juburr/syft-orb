@@ -16,9 +16,9 @@ usage:
         - syft/generate_sbom:
             source: gcr.io/distroless/static:latest
             output_formats: spdx-json
-        # Log a single SBOM file by path
+        # Log specific SBOM files (space-separated, wildcards allowed)
         - syft/log_sbom:
-            sbom_path: sboms/static-latest.spdx.json
+            sbom_file: sboms/static-latest.spdx.json
         # Or log all SBOMs in a directory (auto-detects format from extension)
         - syft/log_sbom:
             sbom_dir: sboms
@@ -74,14 +74,14 @@ usage:
         # Captures dependencies from package.json, go.mod, requirements.txt, etc.
         # that may not be present in compiled/transpiled artifacts.
         # Generates both SPDX and CycloneDX formats by default.
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-source
             source: "dir:."
             attach_workspace: false
             persist_to_workspace: true
 
         # Job-based example: Source code SBOM with single format
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-source-spdx-only
             source: "dir:."
             output_formats: "spdx-json"
@@ -90,14 +90,24 @@ usage:
 
         # Job-based examples: Generate SBOMs for RPM packages
         - build-rpms
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-rpm-el9
             source: "rpms/myapp*.el9.x86_64.rpm"
             requires:
               - build-rpms
 
+        # Job-based example: attach the workspace in a subdirectory.
+        # The SBOMs are still persisted relative to the working directory.
+        - syft/generate_sbom:
+            name: sbom-rpm-el9-attached
+            attach_workspace_at: build
+            source: "build/rpms/myapp*.el9.x86_64.rpm"
+            output_dir: sboms-attached
+            requires:
+              - build-rpms
+
         # Job-based example: noarch RPM with three formats
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-rpm-noarch
             source: "rpms/myapp-config*.noarch.rpm"
             output_formats: "spdx-json,cyclonedx-json,syft-json"
@@ -105,14 +115,14 @@ usage:
               - build-rpms
 
         # Job-based example: Container image (no workspace needed)
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-container
             source: "gcr.io/distroless/static:latest"
             attach_workspace: false
             persist_to_workspace: false
 
         # Job-based example: DEB package
-        - syft/sbom:
+        - syft/generate_sbom:
             name: sbom-deb
             source: "debs/myapp_*_amd64.deb"
             requires:
