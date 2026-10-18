@@ -95,15 +95,19 @@ parameters:
     default: true
     description: Attach workspace before scanning (for accessing build artifacts).
 
-  workspace_root:
+  attach_workspace_at:
     type: string
     default: "."
-    description: Directory to attach workspace to.
+    description: |
+      Directory to attach the workspace at (the "at" of CircleCI's attach_workspace step), when
+      attach_workspace is true. A relative path is resolved against the working directory. It does not
+      affect persisting: persist_to_workspace always persists output_dir with the working directory (".")
+      as the workspace root.
 
   persist_to_workspace:
     type: boolean
     default: true
-    description: Persist output directory to workspace after generation.
+    description: Persist output_dir to the workspace after generation, relative to the working directory.
 
   # Logging Configuration
   log_sboms:
@@ -134,7 +138,7 @@ steps:
       condition: << parameters.attach_workspace >>
       steps:
         - attach_workspace:
-            at: << parameters.workspace_root >>
+            at: << parameters.attach_workspace_at >>
 
   # Install Syft
   - install:

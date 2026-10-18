@@ -1,34 +1,33 @@
-description: Prints generated SBOM(s) to CircleCI output for logging or debugging purposes.
+description: |
+  Prints generated SBOM(s) to CircleCI output for logging or debugging purposes. Each file's format is
+  detected from its name: files ending in .json are treated as JSON, pretty-printed (with pretty) and cut
+  off after 100 lines, and other files are printed in full.
 parameters:
   pretty:
     type: boolean
     default: true
-    description: Pretty print JSON-based SBOMs using jq.
+    description: Pretty print JSON-based SBOMs (files ending in .json) using jq.
   sbom_dir:
     type: string
     default: ""
     description: |
-      Directory containing SBOM files to log. When provided, logs all SBOM files
-      in the directory with format auto-detected from file extension (.spdx.json,
-      .cdx.json, .cdx.xml, etc.). Mutually exclusive with sbom_path.
-  sbom_format:
-    type: enum
-    default: spdx-json
-    description: Output format of the SBOM. Only used with sbom_path parameter.
-    enum: ["cyclonedx-json", "cyclonedx-xml", "github-json", "purls", "spdx-json", "spdx-tag-value", "syft-json", "syft-table", "syft-text", "template"]
-  sbom_path:
+      Directory containing SBOM files to log. When provided, logs every file in the directory with an SBOM
+      suffix written by generate_sbom (.spdx.json, .cdx.json, .syft.json, .github.json, .cdx.xml, .spdx,
+      .syft.txt, .purls.txt); template output (.txt) is not picked up. Set either sbom_dir or sbom_file;
+      when both are set, sbom_dir is used and sbom_file is ignored.
+  sbom_file:
     type: string
     default: ""
     description: |
-      Path to the SBOM file(s). Wildcards are supported to match multiple files,
-      but each must have the same sbom_format. Mutually exclusive with sbom_dir.
+      Path of the SBOM file to log. Several files can be listed, separated by spaces, and each entry may be a
+      shell glob such as "sboms/*.spdx.json", so a path cannot itself contain spaces. A file that does not
+      exist is reported with a warning. Environment variables are expanded. Ignored when sbom_dir is set.
 steps:
   - run:
       name: Log SBOM Contents
       environment:
         PARAM_PRETTY: << parameters.pretty >>
         PARAM_SBOM_DIR: << parameters.sbom_dir >>
-        PARAM_SBOM_FORMAT: << parameters.sbom_format >>
-        PARAM_SBOM_PATH: << parameters.sbom_path >>
+        PARAM_SBOM_FILE: << parameters.sbom_file >>
       shell: /bin/bash
       command: << include(scripts/log_sbom.sh) >>

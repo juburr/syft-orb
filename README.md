@@ -63,7 +63,7 @@
     </td>
     <td width="33%" valign="top">
       🧩 <b>Drop-in job</b><br>
-      <code>syft/sbom</code> attaches your workspace, scans, logs, and persists SBOMs for downstream jobs in one step.
+      The <code>syft/generate_sbom</code> job attaches your workspace, scans, logs, and persists SBOMs for downstream jobs in one step.
     </td>
     <td width="33%" valign="top">
       🔒 <b>Security-team ready</b><br>
@@ -83,13 +83,13 @@ orbs:
   syft: juburr/syft-orb@volatile
 ```
 
-**2. Add the `syft/sbom` job** to a workflow:
+**2. Add the `syft/generate_sbom` job** to a workflow:
 
 ```yaml
 workflows:
   main:
     jobs:
-      - syft/sbom:
+      - syft/generate_sbom:
           source: "gcr.io/distroless/static:latest"
           attach_workspace: false # no upstream job to attach from
 ```
@@ -105,7 +105,7 @@ sboms/
 Each SBOM is previewed in the job log and persisted to the workspace, ready for the next job to sign, scan, or upload. Want different formats? Ask for several [output formats](#output-formats) at once:
 
 ```yaml
-- syft/sbom:
+- syft/generate_sbom:
     source: "gcr.io/distroless/static:latest"
     attach_workspace: false
     output_formats: "spdx-json,cyclonedx-json,syft-json"
@@ -195,20 +195,28 @@ jobs:
 SBOMs for `dir:.` are named after the working directory, so a default CircleCI job writes `sboms/project.spdx.json` and `sboms/project.cdx.json`.
 
 ### Chaining with Your Build
-The `syft/sbom` job attaches the workspace before scanning and persists its output directory afterwards, so it slots between the jobs that build your artifacts and the jobs that ship them:
+The `syft/generate_sbom` job attaches the workspace before scanning and persists its output directory afterwards, so it slots between the jobs that build your artifacts and the jobs that ship them:
 
 ```yaml
 workflows:
   build-and-ship:
     jobs:
       - build-rpms # persists rpms/ to the workspace
-      - syft/sbom:
+      - syft/generate_sbom:
           source: "rpms/myapp*.el9.x86_64.rpm"
           requires:
             - build-rpms
       - publish: # attach_workspace to find the SBOMs under sboms/
           requires:
-            - syft/sbom
+            - syft/generate_sbom
+```
+
+The workspace is attached at the working directory by default. Set `attach_workspace_at` to attach it somewhere else, and adjust `source` to match; the SBOMs are still persisted relative to the working directory:
+
+```yaml
+- syft/generate_sbom:
+    attach_workspace_at: build
+    source: "build/rpms/myapp*.el9.x86_64.rpm"
 ```
 
 ### RPM SBOMs
@@ -243,10 +251,10 @@ Binaries built with [`cargo auditable build`](https://github.com/rust-secure-cod
 A binary built with plain `cargo build` carries no dependency data, so its SBOM will not list any crates; scan the `Cargo.lock` with a `dir:` source instead.
 
 ### Limiting What Gets Scanned
-Directory scans pick up everything under the scan root, including build output, vendored code and dependency trees. Use `exclude`, `config` and `select_catalogers` (on both `generate_sbom` and the `syft/sbom` job) to keep an inventory focused:
+Directory scans pick up everything under the scan root, including build output, vendored code and dependency trees. Use `exclude`, `config` and `select_catalogers` (on both the `generate_sbom` command and job) to keep an inventory focused:
 
 ```yaml
-- syft/sbom:
+- syft/generate_sbom:
     source: "dir:."
     exclude: "./target/**,**/node_modules/**,./ref/**"
 ```
@@ -258,18 +266,17 @@ Directory scans pick up everything under the scan root, including build output, 
 Syft already ignores JavaScript lockfiles inside `node_modules`, but it still walks those trees and catalogs other ecosystems' manifests there (for example the `Cargo.lock` that native npm packages ship), so excluding them keeps the inventory accurate and the scan fast.
 
 ### Logging SBOMs
-Print SBOMs to the job output for review or debugging. JSON SBOMs are pretty-printed with `jq` and cut off after the first 100 lines; other formats are printed in full:
+Print SBOMs to the job output for review or debugging. Files whose names end in `.json` are pretty-printed with `jq` and cut off after the first 100 lines; other files are printed in full:
 
 ```yaml
-# Every SBOM in a directory, with the format detected from each file extension.
-# Template output (.txt) is skipped; log it with sbom_path instead.
+# Every SBOM in a directory.
+# Template output (.txt) is skipped; log it with sbom_file instead.
 - syft/log_sbom:
     sbom_dir: sboms
 
-# Specific files (wildcards allowed), all in the same format
+# Specific files: separate several with spaces; wildcards are allowed
 - syft/log_sbom:
-    sbom_path: sboms/static-latest.spdx.json
-    sbom_format: spdx-json
+    sbom_file: sboms/static-latest.spdx.json sboms/*.cdx.json
 ```
 
 ## 🔧 Installation
@@ -296,7 +303,7 @@ The installer checks the SHA-512 checksum of the downloaded `syft` binary agains
 | `known_versions` | Verify known versions; install unknown versions **without** verification. |
 | `false` | Skip verification entirely (not recommended). |
 
-The same parameter is available on the `syft/sbom` job.
+The same parameter is available on the `syft/generate_sbom` job.
 
 > [!WARNING]
 > **Upgrading to v0.10.0:** the default changed from `known_versions` to `strict`. If you pin a Syft `version` that is newer than this orb release knows about, the install now fails instead of installing an unverified binary. Upgrade the orb to a release that includes that version, or opt out explicitly:
@@ -317,10 +324,10 @@ The installer detects the executor's platform with `uname` and downloads the mat
 
 Any other architecture, or a non-Linux executor, is a hard error. Checksums are recorded per version and architecture; Linux arm64 builds exist from Syft 0.28.0 onward. The install cache key includes the architecture, so amd64 and arm64 jobs never share a cached binary.
 
-To run the `syft/sbom` job on arm64, pick an Arm resource class (the default `cimg/base` image is multi-arch):
+To run the `syft/generate_sbom` job on arm64, pick an Arm resource class (the default `cimg/base` image is multi-arch):
 
 ```yaml
-- syft/sbom:
+- syft/generate_sbom:
     source: "dir:."
     resource_class: arm.medium
 ```
@@ -330,9 +337,9 @@ To run the `syft/sbom` job on arm64, pick an Arm resource class (the default `ci
 | Component | Type | What it does |
 | --- | --- | --- |
 | [`syft/install`](#syftinstall) | command | Installs a checksum-verified, cached Syft binary. Run it before `generate_sbom`. |
-| [`syft/generate_sbom`](#syftgenerate_sbom) | command | Scans one source and writes one or more SBOM formats. |
+| [`syft/generate_sbom`](#syftgenerate_sbom-command) | command | Scans one source and writes one or more SBOM formats. |
 | [`syft/log_sbom`](#syftlog_sbom) | command | Prints SBOMs to the job output. JSON is pretty-printed with `jq` and cut off after 100 lines. |
-| [`syft/sbom`](#syftsbom) | job | Install, generate, log, and persist to the workspace, all in one job. |
+| [`syft/generate_sbom`](#syftgenerate_sbom-job) | job | Install, generate, log, and persist to the workspace, all in one job. |
 
 The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) lists every parameter with its current default, including the Syft version each orb release pins.
 
@@ -350,7 +357,7 @@ The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) list
 
 </details>
 
-#### `syft/generate_sbom`
+#### `syft/generate_sbom` command
 
 <details>
 <summary>Parameters</summary>
@@ -376,43 +383,55 @@ The [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) list
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `sbom_dir` | | Log the SBOMs in a directory, detecting each format from its file extension. Template output (`.txt`) is skipped; use `sbom_path` for it. |
-| `sbom_path` | | Log specific SBOM files. Wildcards are allowed if every match has the same format. |
-| `sbom_format` | `spdx-json` | Format of the `sbom_path` files. |
+| `sbom_dir` | | Log the SBOMs in a directory, picked by the file suffixes `generate_sbom` writes. Template output (`.txt`) is skipped; use `sbom_file` for it. |
+| `sbom_file` | | Log specific SBOM files. Separate several with spaces; each may be a wildcard pattern, so paths cannot contain spaces. |
 | `pretty` | `true` | Pretty-print JSON SBOMs with `jq`. |
 
-Use either `sbom_dir` or `sbom_path`, not both. JSON SBOMs are cut off after the first 100 lines; other formats are printed in full.
+Use either `sbom_dir` or `sbom_file`; when both are set, `sbom_dir` is used. In both modes a file whose name ends in `.json` is treated as JSON and cut off after the first 100 lines; other files are printed in full.
 
 </details>
 
-#### `syft/sbom`
+#### `syft/generate_sbom` job
 
 <details>
 <summary>Parameters</summary>
 
 | Parameter | Default | Description |
 | --- | --- | --- |
-| `source` | *required* | Same as `generate_sbom`. |
+| `source` | *required* | Same as the `generate_sbom` command. |
 | `output_formats` | `cyclonedx-json,spdx-json` | Comma-separated [output formats](#output-formats). |
 | `output_dir` | `sboms` | Directory for the SBOMs. |
 | `syft_version` | pinned per orb release | Syft version to install. |
 | `verify_checksums` | `strict` | See [Checksum verification](#checksum-verification). |
-| `scope`, `enrich`, `exclude`, `select_catalogers`, `config`, `base_path` | as `generate_sbom` | Passed through to `generate_sbom`. |
+| `scope`, `enrich`, `exclude`, `select_catalogers`, `config`, `base_path` | as the `generate_sbom` command | Passed through to the `generate_sbom` command. |
 | `attach_workspace` | `true` | Attach the workspace before scanning, to reach upstream build artifacts. |
-| `workspace_root` | `.` | Where to attach the workspace. |
-| `persist_to_workspace` | `true` | Persist `output_dir` to the workspace afterwards. |
+| `attach_workspace_at` | `.` | Directory to attach the workspace at, when `attach_workspace` is true. Persisting is not affected. |
+| `persist_to_workspace` | `true` | Persist `output_dir` to the workspace afterwards, with the working directory as the workspace root. |
 | `log_sboms` | `true` | Print the generated SBOMs to the job output, with JSON cut off after 100 lines. |
 | `cimg_tag` | `current-22.04` | Tag of the `cimg/base` executor image. |
 | `resource_class` | `medium` | Resource class. Use `arm.medium` or larger to run on arm64. |
 
 </details>
 
+## ⬆️ Upgrading
+
+The next release renames this job and these parameters:
+
+| Old | New |
+| --- | --- |
+| `syft/sbom` job | `syft/generate_sbom`, the same name as the command it runs |
+| `syft/sbom` job's `workspace_root` | `attach_workspace_at` |
+| `log_sbom.sbom_path` | `sbom_file` |
+| `log_sbom.sbom_format` | removed |
+
+Behavior change: `log_sbom` no longer takes the format of `sbom_file` from a parameter. Each file is treated as JSON when its name ends in `.json`, the same rule `sbom_dir` already used, so the files listed in one `sbom_file` no longer have to share a format.
+
 ## 🔒 Info for Security Teams
 
 ### Required external access
 Hosts below were determined from the Syft v1.52.0 source (the orb's default version). The default Syft, GitHub, registry and package-ecosystem endpoints listed use outbound HTTPS (port 443). Endpoints you configure yourself use whatever scheme and port they specify: a custom `GOPROXY` or Syft config URL, git registries declared in `vcpkg-configuration.json` (which may use SSH, e.g. `git@host:org/repo`), and distribution package mirrors (see below, often plain HTTP).
 
-**Installing Syft** (`syft/install`, also run by the `syft/sbom` job). Skipped on a CircleCI cache hit.
+**Installing Syft** (`syft/install`, also run by the `syft/generate_sbom` job). Skipped on a CircleCI cache hit.
 
 | Host | Purpose |
 | --- | --- |
@@ -436,12 +455,12 @@ Hosts below were determined from the Syft v1.52.0 source (the orb's default vers
 - Container images referenced by name are pulled from their registry, plus that registry's auth and blob hosts. For Docker Hub (including unqualified names such as `ubuntu:latest`) that is `registry-1.docker.io`, `auth.docker.io` and its layer CDNs `production.cloudfront.docker.com` and `production.cloudflare.docker.com`. Loading `docker-archive:`, `oci-archive:` and `oci-dir:` sources needs no network, but the enrichment above still applies to the packages found inside them.
 - For RPM and DEB sources, if `rpm2archive` or `tar` (RPM) or `dpkg-deb` (DEB) is missing, the orb installs it with `apt-get`, `dnf` or `yum`, which contacts the distribution mirrors configured in the executor image, using their configured scheme (Ubuntu images commonly use `http://archive.ubuntu.com`). `cimg/base` ships `dpkg-deb` but not `rpm`.
 - If a Go toolchain is on `PATH` and a `go.mod` is in scope, Syft runs `go list` for every `enrich` value except `none` (including non-Go values such as `javascript`), or whenever a config file sets `golang.use-packages-lib: true`. It can download missing modules through `GOPROXY` (`proxy.golang.org`, possibly redirecting to `storage.googleapis.com`), fall back to the module's own VCS host (any host, e.g. `github.com`) for private modules or ones the proxy cannot serve, because the default `GOPROXY` ends in `direct`, and check hashes missing from `go.sum` against `GOSUMDB` (`sum.golang.org`). With other `enrich` values, set `SYFT_GOLANG_USE_PACKAGES_LIB=false` to stop Syft from running `go list`. `cimg/base` has no Go toolchain.
-- Syft's start-up update check (`toolbox-data.anchore.io`) is disabled for scans run through `syft/generate_sbom` and the `syft/sbom` job, which set `SYFT_CHECK_FOR_APP_UPDATE=false` since the orb pins the version (a value you set yourself takes precedence). If you run `syft` directly after `syft/install`, set `SYFT_CHECK_FOR_APP_UPDATE=false` in your job to avoid the request.
+- Syft's start-up update check (`toolbox-data.anchore.io`) is disabled for scans run through the `syft/generate_sbom` command and job, which set `SYFT_CHECK_FOR_APP_UPDATE=false` since the orb pins the version (a value you set yourself takes precedence). If you run `syft` directly after `syft/install`, set `SYFT_CHECK_FOR_APP_UPDATE=false` in your job to avoid the request.
 
 ### Disconnected builds
 `enrich: none` is the disconnected-build setting: the orb passes `--enrich none` to Syft, which also overrides an `enrich` list in a config file or `.syft.yaml`. Per-ecosystem network settings in a config file (for example `javascript.search-remote-licenses: true`, `java.use-network: true` or `golang.use-packages-lib: true`) or in the equivalent environment variables (`SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES`, `SYFT_JAVA_USE_NETWORK`, `SYFT_GOLANG_USE_PACKAGES_LIB`, ...) still take precedence over `--enrich`, so leave them unset or set them to `false`. For a build with no egress at all, also:
 
-- provide `syft` in the executor image and use the `syft/generate_sbom` command in your own job instead of `syft/install` or the `syft/sbom` job;
+- provide `syft` in the executor image and use the `syft/generate_sbom` command in your own job instead of `syft/install` or the `syft/generate_sbom` job;
 - scan local sources only (`dir:`, `file:`, `docker-archive:`, `oci-archive:`, `oci-dir:`, or an image already in the local daemon via `docker:`);
 - for RPM or DEB sources, preinstall `rpm2archive` (from the `rpm` package), `tar` and `gzip`, or `dpkg-deb`, in the executor image, since the orb otherwise tries to install them from the distribution mirrors.
 

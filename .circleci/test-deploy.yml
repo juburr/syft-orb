@@ -236,7 +236,7 @@ jobs:
           command: |
             mkdir -p hidden-logs
             cp scheme-names/README.md.spdx.json hidden-logs/.venv.spdx.json
-            PARAM_PRETTY=false PARAM_SBOM_DIR=hidden-logs PARAM_SBOM_FORMAT=spdx-json PARAM_SBOM_PATH="" \
+            PARAM_PRETTY=false PARAM_SBOM_DIR=hidden-logs PARAM_SBOM_FILE="" \
               bash src/scripts/log_sbom.sh > hidden-logs.out 2>&1
             if ! grep -q "Logged 1 SBOM file(s)" hidden-logs.out; then
               cat hidden-logs.out
@@ -244,6 +244,28 @@ jobs:
               exit 1
             fi
             echo "SUCCESS: hidden SBOM file logged"
+      - run:
+          name: "Verify log_sbom file mode detects JSON by extension"
+          command: |
+            # Space-separated files and globs; JSON is cut off after 100 lines, other files are printed in full.
+            mkdir -p file-logs
+            seq 1 150 > file-logs/long.json
+            seq 1 150 > file-logs/long.spdx
+            PARAM_PRETTY=false PARAM_SBOM_DIR="" PARAM_SBOM_FILE="file-logs/*.json file-logs/long.spdx file-logs/missing.cdx.json" \
+              bash src/scripts/log_sbom.sh > file-logs.out 2>&1
+            JSON_LINES=$(sed -n '/^=== long.json ===$/,/^$/p' file-logs.out | grep -cx '[0-9][0-9]*')
+            OTHER_LINES=$(sed -n '/^=== long.spdx ===$/,/^$/p' file-logs.out | grep -cx '[0-9][0-9]*')
+            if [[ "${JSON_LINES}" -ne 100 || "${OTHER_LINES}" -ne 150 ]]; then
+              cat file-logs.out
+              echo "ERROR: expected 100 JSON lines and 150 other lines, got ${JSON_LINES} and ${OTHER_LINES}"
+              exit 1
+            fi
+            if ! grep -q "WARNING: File not found: file-logs/missing.cdx.json" file-logs.out; then
+              cat file-logs.out
+              echo "ERROR: missing sbom_file entry was not reported"
+              exit 1
+            fi
+            echo "SUCCESS: sbom_file logs each file by its extension"
 
       # Test 9: a file: scheme on an RPM is handled like a plain path
       - syft-orb/generate_sbom:
@@ -895,7 +917,7 @@ jobs:
             fi
             echo "SUCCESS: negative control reports no crates without cargo-auditable"
 
-  # Test the sbom job with RPM - uses the job directly
+  # Test the generate_sbom job with RPM - uses the job directly
   test-sbom-job-rpm:
     docker:
       - image: cimg/base:current-22.04
@@ -982,7 +1004,7 @@ jobs:
             fi
             echo "SUCCESS: enrich: none is passed to syft as --enrich none"
 
-  # Test the sbom job with DEB - uses the job directly
+  # Test the generate_sbom job with DEB - uses the job directly
   test-sbom-job-deb:
     docker:
       - image: cimg/base:current-22.04
@@ -1019,7 +1041,7 @@ jobs:
             - workspace
 
   # The install contract test (tests/install_test.sh, in the setup workflow)
-  # covers the install script. This checks that the sbom job, which passes its
+  # covers the install script. This checks that the generate_sbom job, which passes its
   # own verify_checksums to install, also defaults to strict.
   test-install-checksum-defaults:
     docker:
@@ -1029,7 +1051,7 @@ jobs:
       - run:
           name: "Verify verify_checksums defaults to strict"
           command: |
-            for f in src/commands/install.yml src/jobs/sbom.yml; do
+            for f in src/commands/install.yml src/jobs/generate_sbom.yml; do
               default=$(awk '/^  verify_checksums:/{f=1; next} f && /^  [^ ]/{f=0} f && /^    default:/{print $2; exit}' "${f}")
               echo "${f}: verify_checksums default = '${default}'"
               if [[ "${default}" != "strict" ]]; then
@@ -1037,7 +1059,7 @@ jobs:
                 exit 1
               fi
             done
-            echo "SUCCESS: Both the install command and sbom job default to strict"
+            echo "SUCCESS: Both the install command and generate_sbom job default to strict"
       # A listed version still installs and verifies with the default.
       - syft-orb/install:
           caching: false
@@ -1118,8 +1140,8 @@ workflows:
       - test-install-unverified-no-cache:
           filters: *filters
 
-      # Test the sbom job on an arm64 Docker resource class
-      - syft-orb/sbom:
+      # Test the generate_sbom job on an arm64 Docker resource class
+      - syft-orb/generate_sbom:
           name: test-sbom-container-arm64
           source: "gcr.io/distroless/static:latest"
           output_dir: sboms-arm64
@@ -1137,14 +1159,14 @@ workflows:
       - test-cargo-auditable:
           filters: *filters
 
-      # Test the sbom job
+      # Test the generate_sbom job
       - test-sbom-job-rpm:
           filters: *filters
       - test-update-check-disabled:
           filters: *filters
 
-      # Test sbom job with default formats (cyclonedx-json,spdx-json)
-      - syft-orb/sbom:
+      # Test the generate_sbom job with default formats (cyclonedx-json,spdx-json)
+      - syft-orb/generate_sbom:
           name: test-sbom-rpm-x86-default-formats
           source: "workspace/rpms/testapp-*.el9.x86_64.rpm"
           output_dir: sboms-default
@@ -1155,21 +1177,22 @@ workflows:
             - test-sbom-job-rpm
           filters: *filters
 
-      # Test sbom job with single format
-      - syft-orb/sbom:
+      # Test the generate_sbom job with single format, attaching the workspace in a subdirectory
+      - syft-orb/generate_sbom:
           name: test-sbom-rpm-noarch-single-format
-          source: "workspace/rpms/testapp-config-*.noarch.rpm"
+          source: "attached/workspace/rpms/testapp-config-*.noarch.rpm"
           output_dir: sboms-single
           output_formats: "spdx-json"
           attach_workspace: true
+          attach_workspace_at: attached
           persist_to_workspace: true
           log_sboms: true
           requires:
             - test-sbom-job-rpm
           filters: *filters
 
-      # Test sbom job with three formats
-      - syft-orb/sbom:
+      # Test the generate_sbom job with three formats
+      - syft-orb/generate_sbom:
           name: test-sbom-container-three-formats
           source: "gcr.io/distroless/static:latest"
           output_dir: sboms-container
@@ -1179,8 +1202,8 @@ workflows:
           log_sboms: true
           filters: *filters
 
-      # Test sbom job with source directory (default formats)
-      - syft-orb/sbom:
+      # Test the generate_sbom job with source directory (default formats)
+      - syft-orb/generate_sbom:
           name: test-sbom-source
           source: "dir:."
           output_dir: sboms-source
@@ -1189,8 +1212,8 @@ workflows:
           log_sboms: true
           filters: *filters
 
-      # Test sbom job with scope control parameters
-      - syft-orb/sbom:
+      # Test the generate_sbom job with scope control parameters
+      - syft-orb/generate_sbom:
           name: test-sbom-source-scoped
           source: "dir:."
           output_dir: sboms-source-scoped
@@ -1201,10 +1224,10 @@ workflows:
           log_sboms: false
           filters: *filters
 
-      # Test the sbom job with DEB package (default formats)
+      # Test the generate_sbom job with DEB package (default formats)
       - test-sbom-job-deb:
           filters: *filters
-      - syft-orb/sbom:
+      - syft-orb/generate_sbom:
           name: test-sbom-deb-default-formats
           source: "workspace/debs/debapp_*_amd64.deb"
           output_dir: sboms-deb

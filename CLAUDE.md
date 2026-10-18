@@ -34,7 +34,7 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
   - `install.yml` - Installs syft binary with caching and checksum verification
   - `generate_sbom.yml` - Generates SBOM from various sources
   - `log_sbom.yml` - Displays SBOM contents in build logs
-- `jobs/sbom.yml` - Complete job combining install + generate (SPDX and CycloneDX) + optional logging
+- `jobs/generate_sbom.yml` - `generate_sbom` job (same name as the command it runs) combining optional workspace attach (`attach_workspace_at`) + install + generate (SPDX and CycloneDX) + optional logging + persist
 - `scripts/` - Shell implementations called by commands
 - `examples/example.yml` - Usage documentation
 
@@ -49,7 +49,7 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 - DEB extraction via `dpkg-deb`
 - Automatic tool installation if missing (rpm, dpkg)
 
-**`scripts/log_sbom.sh`**: Auto-detects format from file extensions, pretty-prints JSON with jq.
+**`scripts/log_sbom.sh`**: Logs every SBOM in `sbom_dir`, or the space-separated files/globs in `sbom_file`. In both modes a file is JSON when its name ends in `.json` (there is no format parameter); JSON is pretty-printed with jq and cut off after 100 lines.
 
 ### CI Pipeline (`.circleci/`)
 
