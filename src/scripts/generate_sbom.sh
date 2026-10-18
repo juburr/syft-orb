@@ -85,7 +85,10 @@ parse_exclude_patterns() {
 if [[ -n "${EXCLUDE}" ]]; then
   parse_exclude_patterns "${EXCLUDE}"
   echo "Exclude patterns:"
-  printf '  - %s\n' "${EXCLUDE_PATTERNS[@]}"
+  # An exclude of only commas or spaces leaves the array empty. Under set -u,
+  # bash before 4.4 treats an empty array as unset, so expand it with
+  # ${a[@]+"${a[@]}"} rather than "${a[@]}".
+  printf '  - %s\n' ${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}
   echo ""
 fi
 
@@ -525,7 +528,8 @@ fi
 if [[ -n "${CONFIG}" ]]; then
   syft_args+=(--config "${CONFIG}")
 fi
-for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+# EXCLUDE_PATTERNS is empty without an exclude parameter (see above).
+for pattern in ${EXCLUDE_PATTERNS[@]+"${EXCLUDE_PATTERNS[@]}"}; do
   syft_args+=(--exclude "${pattern}")
 done
 if [[ -n "${SELECT_CATALOGERS}" ]]; then

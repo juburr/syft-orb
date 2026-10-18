@@ -73,6 +73,7 @@ Every script in `src/scripts/` except the shared install code follows the conven
 
 - Line 1 is `#!/bin/bash` and the first command is `set -euo pipefail`. No `set +o history`, never xtrace.
 - Under `-u`, use `${VAR:-}` for variables that may be unset (`CIRCLE_*`, `TMPDIR`, optional env vars). `PARAM_*` values the command YAML always sets are read directly, so CI steps that run a script directly must set every one of them. Under `-e`/`pipefail`, watch `grep -q` or `head` ending a pipeline early (SIGPIPE) and tools whose failure the old code ignored.
+- Expand an array that can be empty as `${arr[@]+"${arr[@]}"}`, not `"${arr[@]}"`: under `-u`, bash before 4.4 treats an empty array as unset and aborts with "unbound variable", and the orb supports bash 4.0+. `tests/generate_sbom_test.sh` runs generate_sbom.sh on its empty-array paths.
 - `ERROR: ` and `WARN: ` messages go to stderr (`>&2` on every line of the message); everything else goes to stdout. Every non-zero exit prints an `ERROR:` line first, unless the failing tool already explained itself.
 - `$BASH_ENV` exports use `printf 'export %s=%q\n'`; `eval` only runs orb code (`"${NAME_LIB}"`, `"${NAME_SCRIPT}"`). Secrets never go on a command line, and curl that sends credentials or fetches trusted content uses `--fail` and `--proto '=https'`.
 - Temporary files and directories come from `mktemp` and are removed by one EXIT trap per script (a second `trap ... EXIT` replaces the first).

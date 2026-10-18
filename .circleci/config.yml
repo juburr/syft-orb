@@ -25,6 +25,14 @@ jobs:
       - run:
           name: Run circleci env subst tests
           command: bash tests/env_subst_test.sh
+  test-generate-sbom:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Run generate_sbom script tests
+          command: bash tests/generate_sbom_test.sh
   test-shell-conventions:
     docker:
       - image: cimg/base:current
@@ -41,6 +49,8 @@ workflows:
           filters: *filters
       - test-env-subst:
           filters: *filters
+      - test-generate-sbom:
+          filters: *filters
       - test-shell-conventions:
           filters: *filters
       - orb-tools/lint:
@@ -56,5 +66,5 @@ workflows:
           pipeline_number: << pipeline.number >>
           vcs_type: << pipeline.project.type >>
           orb_name: syft-orb
-          requires: [test-install, test-env-subst, test-shell-conventions, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
+          requires: [test-install, test-env-subst, test-generate-sbom, test-shell-conventions, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
           filters: *filters
