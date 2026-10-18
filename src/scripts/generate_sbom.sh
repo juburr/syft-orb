@@ -397,6 +397,9 @@ if [[ "${SOURCE}" == *.rpm ]] || [[ "${SOURCE}" == *.RPM ]]; then
   # prevent permission errors.
   echo "Extracting RPM contents to a temporary directory..."
   TMP_SCAN_DIR=$(mktemp -d)
+  # Made absolute because the scan cds into it: with a relative TMPDIR, a
+  # relative path would point below itself for --base-path and the cleanup.
+  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" && pwd)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
   TMP_ARCHIVE="$(mktemp)"
   echo "  TMP_ARCHIVE: ${TMP_ARCHIVE}"
@@ -484,6 +487,9 @@ if [[ "${SOURCE}" == *.deb ]] || [[ "${SOURCE}" == *.DEB ]]; then
   # to preserve them during extraction.
   echo "Extracting DEB contents to a temporary directory..."
   TMP_SCAN_DIR=$(mktemp -d)
+  # Made absolute because the scan cds into it: with a relative TMPDIR, a
+  # relative path would point below itself for --base-path and the cleanup.
+  TMP_SCAN_DIR=$(cd -- "${TMP_SCAN_DIR}" && pwd)
   echo "  TMP_SCAN_DIR: ${TMP_SCAN_DIR}"
 
   # Extract the DEB package contents
