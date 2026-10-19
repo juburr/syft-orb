@@ -106,7 +106,7 @@ Add the orb and its `syft/generate_sbom` job to a workflow. Copy this into `.cir
 version: 2.1
 
 orbs:
-  syft: juburr/syft-orb@volatile
+  syft: juburr/syft-orb@1.0.0
 
 workflows:
   main:
@@ -134,10 +134,10 @@ Each SBOM is previewed in the job log and persisted to the workspace, ready for 
 ```
 
 > [!TIP]
-> `@volatile` always resolves to the newest published release, which is handy for kicking the tyres. For production pipelines, pin a numeric version such as `@1.2.3`, or `@1.2` to pick up patch releases, so upgrades happen when you choose. The orb version badge above and the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) show the latest release. CircleCI does not accept `@latest`.
+> The Quick Start pins an exact release, so the orb only changes when you choose to upgrade. `@1.0` picks up patch releases, and `@1` picks up minor releases too. The orb version badge above and the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) show the latest release. CircleCI does not accept `@latest`.
 
 > [!TIP]
-> Upgrading from the `syft/sbom` job? The next release renames it and some `log_sbom` parameters. See [Upgrading](#-upgrading).
+> Upgrading from the `syft/sbom` job? v1.0.0 renames it and some `log_sbom` parameters. See [Upgrading](#-upgrading).
 
 ## 🎯 Supported Sources
 
@@ -381,7 +381,7 @@ Environment variables are expanded in `install`'s `version` and `install_path`, 
 
 ## 📦 Upgrading
 
-The next release renames this job and these parameters:
+v1.0.0 renames this job and these parameters:
 
 | Old | New |
 | --- | --- |
@@ -432,7 +432,7 @@ The `install` command checks the Syft binary from the downloaded release against
 The table covers the default `version` and earlier releases, back to Syft 0.1.0 on amd64 and 0.28.0 on arm64. If you pin a Syft release newer than this orb, `strict` fails until the orb is upgraded. Upgrade the orb (or [open a PR](#-contributing) adding the checksum) rather than opting out.
 
 > [!WARNING]
-> **Upgrading to v0.10.0:** the default changed from `known_versions` to `strict`. If you pin a Syft `version` that is newer than this orb release knows about, the install now fails instead of installing an unverified binary. Upgrade the orb to a release that includes that version, or opt out explicitly:
+> **Upgrading to v1.0.0:** the default changed from `known_versions` to `strict`. If you pin a Syft `version` that is newer than this orb release knows about, the install now fails instead of installing an unverified binary. Upgrade the orb to a release that includes that version, or opt out explicitly:
 >
 > ```yaml
 > - syft/install:
