@@ -58,6 +58,7 @@ workflows:
       - orb-tools/pack:
           filters: *filters
       - orb-tools/review:
+          orb_name: syft
           filters: *filters
       - shellcheck/check:
           filters: *filters
