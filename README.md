@@ -415,7 +415,7 @@ Linux executors on `x86_64` (amd64) and `aarch64`/`arm64` (arm64), including Cir
 | `x86_64` | `syft_<version>_linux_amd64.tar.gz` |
 | `aarch64` or `arm64` | `syft_<version>_linux_arm64.tar.gz` |
 
-Linux arm64 builds exist from Syft 0.28.0 onward. The `syft/generate_sbom` job runs on `cimg/base`, which is multi-arch, so an `arm.*` `resource_class` is all it takes to run it on arm64 (see [Running on Arm](#running-on-arm)). `install` and `generate_sbom` need bash 4 or newer. `cimg/base` ships `dpkg-deb` but not `rpm`, so an RPM source on it installs `rpm` first.
+Linux arm64 builds exist from Syft 0.28.0 onward. The `syft/generate_sbom` job runs on `cimg/base`, which is multi-arch, so an `arm.*` `resource_class` is all it takes to run it on arm64 (see [Running on Arm](#running-on-arm)). `install` and `generate_sbom` need bash 4 or newer, and `install` also needs `mktemp`, `tar`, `gzip`, and `curl` or `wget`, plus `sha512sum` when it verifies. `cimg/base` ships `dpkg-deb` but not `rpm`, so an RPM source on it installs `rpm` first.
 
 The download cache is keyed by Syft version, executor architecture and home directory, so amd64 and arm64 jobs never share a cached binary. On executors whose `PATH` doesn't already include `install_path` (for example, machine executors), `install` adds it for later steps through `BASH_ENV`.
 
