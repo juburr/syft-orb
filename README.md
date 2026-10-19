@@ -486,7 +486,7 @@ This is an unofficial, community-maintained orb, and contributions are welcome! 
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/juburr/syft-orb/issues) or a [pull request](https://github.com/juburr/syft-orb/pulls).
 - **Need a newer Syft release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script prints entries for linux amd64 and arm64 after checking each asset against `syft_<version>_checksums.txt`, the SHA-256 list Syft publishes with each release, and needs `cosign` to verify that list's keyless Sigstore signature for releases from 0.104.0 on.
-- **Before opening a pull request**, run the checks CI runs, with the [CircleCI CLI](https://circleci.com/docs/local-cli/) and [ShellCheck](https://www.shellcheck.net/). The tests run offline, with stand-ins for `syft` and the downloads they need. CI also runs integration tests on amd64 and arm64.
+- **Before opening a pull request**, run the checks CI runs, with the [CircleCI CLI](https://circleci.com/docs/local-cli/) and [ShellCheck](https://www.shellcheck.net/). The tests run offline, with stand-ins for `syft` and the downloads they need; `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access. CI also runs integration tests on amd64 and arm64.
 
   ```bash
   yamllint .
