@@ -2,8 +2,10 @@
 #
 # Runs src/scripts/generate_sbom.sh with stub syft and circleci commands on
 # the paths where it expands an empty array, and checks that it succeeds and
-# passes syft exactly the expected arguments. It also scans a small DEB with
-# a relative TMPDIR (see check_deb_relative_tmpdir).
+# passes syft exactly the expected arguments. It also runs it without the
+# CircleCI CLI, as on GitHub Actions, checks the enrich and scope values it
+# accepts and refuses, and scans a small DEB with a relative TMPDIR (see
+# check_deb_relative_tmpdir).
 #
 # generate_sbom.sh runs under set -u, and bash before 4.4 treats an empty
 # array as unset there: a plain "${a[@]}" of an empty array aborts the script
@@ -73,6 +75,117 @@ check() {
 
 check "a directory scan without exclude, config or select_catalogers" ""
 check "an exclude of only separators adds no --exclude" ", ,"
+
+# A PATH without circleci, as on a GitHub Actions runner: the stub syft, then
+# links to every other command on the PATH. CircleCI's executors have the real
+# CLI in a system directory, so dropping the stub's directory isn't enough.
+mkdir -p "${WORK}/syft-only" "${WORK}/nocli"
+ln -s "${WORK}/bin/syft" "${WORK}/syft-only/syft"
+IFS=: read -r -a PATH_DIRS <<< "${PATH}"
+for dir in "${PATH_DIRS[@]}"; do
+    for tool in "${dir}"/*; do
+        name=$(basename "${tool}")
+        if [[ "${name}" != circleci && -x "${tool}" && ! -d "${tool}" && ! -e "${WORK}/nocli/${name}" ]]; then
+            ln -s "${tool}" "${WORK}/nocli/${name}"
+        fi
+    done
+done
+NO_CLI_PATH="${WORK}/syft-only:${WORK}/nocli"
+if PATH="${NO_CLI_PATH}" command -v circleci > /dev/null 2>&1; then
+    echo "FAIL: the PATH for the no-CLI checks still has a circleci"
+    FAILURES=$((FAILURES + 1))
+else
+    echo "ok: the PATH for the no-CLI checks has no circleci"
+fi
+
+# gen PATH NAME=VALUE...: runs generate_sbom.sh on dir:./project with the
+# command's defaults, overridden by each NAME=VALUE, and sets RC.
+gen() {
+    local path=$1
+    shift
+    rm -f "${WORK}/syft.args"
+    RC=0
+    (
+        cd "${WORK}"
+        export PARAM_BASE_PATH="" PARAM_CONFIG="" PARAM_ENRICH=all PARAM_EXCLUDE="" PARAM_SOURCE=dir:./project \
+            PARAM_OUTPUT_DIR="" PARAM_OUTPUT_FORMATS=spdx-json PARAM_SCOPE=squashed PARAM_SELECT_CATALOGERS=""
+        for setting in "$@"; do
+            export "${setting?}"
+        done
+        PATH="${path}" bash "${ROOT}/src/scripts/generate_sbom.sh"
+    ) > "${WORK}/output.txt" 2>&1 || RC=$?
+}
+
+# expect_args NAME WANTED...: syft ran with exactly these arguments.
+expect_args() {
+    local name=$1
+    shift
+    if [[ ${RC} -ne 0 ]]; then
+        echo "FAIL: ${name}: generate_sbom.sh exited ${RC}:"
+        sed 's/^/  /' "${WORK}/output.txt"
+        FAILURES=$((FAILURES + 1))
+    elif ! printf '%s\n' "$@" | diff - "${WORK}/syft.args" > "${WORK}/diff.txt"; then
+        echo "FAIL: ${name}: syft got other arguments (< wanted, > got):"
+        sed 's/^/  /' "${WORK}/diff.txt"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok: ${name}"
+    fi
+}
+
+# expect_refused NAME MESSAGE: the script failed with MESSAGE before running syft.
+expect_refused() {
+    local name=$1 message=$2
+    if [[ ${RC} -eq 0 || -e "${WORK}/syft.args" ]] || ! grep -qF -- "${message}" "${WORK}/output.txt"; then
+        echo "FAIL: ${name}: wanted a failure saying '${message}' before syft ran (exit ${RC}):"
+        sed 's/^/  /' "${WORK}/output.txt"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok: ${name}"
+    fi
+}
+
+# Without the CLI, values are used as they are: nothing is expanded.
+# shellcheck disable=SC2016 # literal $NAME on purpose
+NAME=expanded gen "${NO_CLI_PATH}" 'PARAM_OUTPUT_DIR=out-$NAME' PARAM_SCOPE=all-layers
+# shellcheck disable=SC2016
+expect_args "without the CircleCI CLI, a \$NAME in a value stays as it is" \
+    scan -vv --scope all-layers --base-path / -o "spdx-json=${WORK}/out-\$NAME/project.spdx.json" --enrich all dir:./project
+
+# yaml_enum PARAMETER: the values of an enum parameter of the generate_sbom command.
+yaml_enum() {
+    awk -v key="$1" '
+        $0 ~ "^  " key ":$" { found = 1; next }
+        found && /^  [a-z_]+:$/ { exit }
+        found && /^    enum:/ { gsub(/^    enum:[[:space:]]*\[|\]$|"|[[:space:]]/, ""); gsub(/,/, "\n"); print; exit }
+    ' "${ROOT}/src/commands/generate_sbom.yml"
+}
+
+# The script checks enum values itself, since a GitHub Action's inputs are
+# plain strings. Every value the command allows must pass.
+ENRICH_VALUES=$(yaml_enum enrich)
+SCOPE_VALUES=$(yaml_enum scope)
+if [[ $(wc -l <<< "${ENRICH_VALUES}") -lt 7 || $(wc -l <<< "${SCOPE_VALUES}") -lt 3 ]]; then
+    echo "FAIL: could not read the enrich and scope enums from src/commands/generate_sbom.yml"
+    FAILURES=$((FAILURES + 1))
+fi
+while IFS= read -r value; do
+    gen "${NO_CLI_PATH}" "PARAM_ENRICH=${value}"
+    expect_args "enrich ${value} is accepted" \
+        scan -vv --scope squashed --base-path / -o "spdx-json=${WORK}/sboms/project.spdx.json" --enrich "${value}" dir:./project
+done <<< "${ENRICH_VALUES}"
+while IFS= read -r value; do
+    gen "${NO_CLI_PATH}" "PARAM_SCOPE=${value}"
+    expect_args "scope ${value} is accepted" \
+        scan -vv --scope "${value}" --base-path / -o "spdx-json=${WORK}/sboms/project.spdx.json" --enrich all dir:./project
+done <<< "${SCOPE_VALUES}"
+
+gen "${NO_CLI_PATH}" PARAM_ENRICH=everything
+expect_refused "an unknown enrich value is refused" "ERROR: enrich must be one of"
+gen "${NO_CLI_PATH}" PARAM_ENRICH=
+expect_refused "an empty enrich value is refused" "ERROR: enrich must be one of"
+gen "${NO_CLI_PATH}" PARAM_SCOPE=layers
+expect_refused "an unknown scope value is refused" "ERROR: scope must be one of"
 
 # A DEB scan extracts the package into a mktemp -d directory and cds into it.
 # With a relative TMPDIR, mktemp returns a relative path, so the script must

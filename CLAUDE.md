@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an unofficial CircleCI orb that simplifies integration of Syft (SBOM generator) into CircleCI pipelines. The orb enables generating Software Bill of Materials for container images, RPM/DEB packages, and source directories.
+This is an unofficial CircleCI orb, and set of GitHub Actions, that simplifies integration of Syft (SBOM generator) into CircleCI pipelines and GitHub workflows. The orb enables generating Software Bill of Materials for container images, RPM/DEB packages, and source directories.
 
 ## Development Commands
 
@@ -38,6 +38,10 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 - `scripts/` - Shell implementations called by commands
 - `examples/example.yml` - Usage documentation
 
+### GitHub Actions (`actions/`)
+
+Every command has a composite action of the same name in `actions/<command>/action.yml`, with inputs identical to the command's parameters (names and defaults). Each step passes inputs to the orb's script as `PARAM_*` environment variables and runs it with `actions/run_script.sh`, which gives the script a `BASH_ENV` and passes what it exports on through `GITHUB_PATH` and `GITHUB_ENV`. Inputs never appear inside a `run:` script. `install` restores and saves `actions/cache` with the command's key ingredients. The `generate_sbom` job has no action. `actions/run_script.sh` and `tests/actions_test.sh` are identical in every juburr orb that ships actions; never edit them here alone. `tests/actions_test.sh` checks that the actions match the commands.
+
 ### Key Implementation Details
 
 **`scripts/install.sh`**: Installs the linux amd64 or arm64 syft build (from `uname -m`) from GitHub releases with SHA-512 checksum verification. It follows the layout every juburr orb's install.sh shares: a tool definition (asset names, URLs, archive member, version command), a shared install logic block that must stay identical across the orbs, and a checksum table keyed `"<version>/<arch>"`. Three verification modes: `false`, `known_versions`, `strict` (default, fails before downloading an unlisted version). `tests/install_test.sh` is the install contract test shared by the orbs; `src/scripts/install_hash.sh -v <version>` prints new table entries after checking the release's signed checksums (needs cosign).
@@ -54,18 +58,19 @@ circleci orb publish orb.yml juburr/syft-orb@dev:latest
 
 ### CI Pipeline (`.circleci/`)
 
-- `config.yml` - Main pipeline: lint, pack, review, shellcheck, and the `tests/` scripts
+- `config.yml` - Main pipeline: lint, pack, review, shellcheck, and the `tests/` scripts (`test-actions` runs `tests/actions_test.sh`)
 - `test-deploy.yml` - Comprehensive test suite with:
   - Command tests (7 scenarios)
   - RPM package tests (builds test packages for RHEL 7/8/9/10)
   - DEB package tests (builds test packages for Ubuntu focal/jammy/noble)
   - Full job integration tests
+- `../.github/workflows/actions.yml` - The actions on GitHub's runners: offline tests, install (amd64 and arm64, a second install from the cache, an unlisted version failing), install from the cache with the download hosts blocked, and `sbom`/`sbom-arm64`, which mirror `command-test` and the core of `test-scope-control`
 
 ## Linting
 
 YAML linting uses `.yamllint` config (extends "relaxed", 200-char line limit). Shell scripts are linted with shellcheck via the CI pipeline.
 
-Scripts pass parameter values to `circleci env subst` on stdin, as in `VALUE=$(printf '%s' "${PARAM_VALUE}" | circleci env subst)`. Passed as an argument, a value starting with `-` is parsed as a CLI flag. `tests/env_subst_test.sh` enforces this.
+Scripts pass parameter values to `circleci env subst` on stdin, as in `VALUE=$(printf '%s' "${PARAM_VALUE}" | circleci env subst)`. Passed as an argument, a value starting with `-` is parsed as a CLI flag. `tests/env_subst_test.sh` enforces this. Without the CLI (GitHub Actions, local runs), `subst` uses the value as is. CircleCI checks enum and boolean parameters before a step runs, but action inputs are plain strings, so `generate_sbom.sh` checks `enrich` and `scope`, and `log_sbom.sh` takes `pretty` as `1`/`true` or `0`/`false`. `tests/generate_sbom_test.sh` and `tests/log_sbom_test.sh` run both without a `circleci` on the `PATH`.
 
 ## Shell conventions
 
