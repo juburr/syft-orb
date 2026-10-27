@@ -2,17 +2,43 @@
 
 set -euo pipefail
 
-# Ensure CircleCI environment variables can be passed in as orb parameters.
-# Values are passed via stdin: values like "-file" would otherwise be parsed as CLI flags.
-BASE_PATH=$(printf '%s' "${PARAM_BASE_PATH}" | circleci env subst)
-ENRICH=$(printf '%s' "${PARAM_ENRICH}" | circleci env subst)
-SOURCE=$(printf '%s' "${PARAM_SOURCE}" | circleci env subst)
-OUTPUT_DIR=$(printf '%s' "${PARAM_OUTPUT_DIR}" | circleci env subst)
-OUTPUT_FORMATS=$(printf '%s' "${PARAM_OUTPUT_FORMATS}" | circleci env subst)
-SCOPE=$(printf '%s' "${PARAM_SCOPE}" | circleci env subst)
-CONFIG=$(printf '%s' "${PARAM_CONFIG}" | circleci env subst)
-EXCLUDE=$(printf '%s' "${PARAM_EXCLUDE}" | circleci env subst)
-SELECT_CATALOGERS=$(printf '%s' "${PARAM_SELECT_CATALOGERS}" | circleci env subst)
+# Expands environment variables in a parameter value with the CircleCI CLI.
+# The value is passed on stdin: values like "-file" would otherwise be parsed as
+# CLI flags. Without the CLI (GitHub Actions, local runs), the value is used as is.
+subst() {
+  if command -v circleci >/dev/null 2>&1; then
+    printf '%s' "$1" | circleci env subst
+  else
+    printf '%s' "$1"
+  fi
+}
+
+BASE_PATH=$(subst "${PARAM_BASE_PATH}")
+ENRICH=$(subst "${PARAM_ENRICH}")
+SOURCE=$(subst "${PARAM_SOURCE}")
+OUTPUT_DIR=$(subst "${PARAM_OUTPUT_DIR}")
+OUTPUT_FORMATS=$(subst "${PARAM_OUTPUT_FORMATS}")
+SCOPE=$(subst "${PARAM_SCOPE}")
+CONFIG=$(subst "${PARAM_CONFIG}")
+EXCLUDE=$(subst "${PARAM_EXCLUDE}")
+SELECT_CATALOGERS=$(subst "${PARAM_SELECT_CATALOGERS}")
+
+# CircleCI checks enum parameters before the step runs, but a GitHub Action's
+# inputs are plain strings, so the script checks them itself.
+case "${ENRICH}" in
+  none | all | golang | java | javascript | python | vcpkg) ;;
+  *)
+    echo "ERROR: enrich must be one of none, all, golang, java, javascript, python or vcpkg, not '${ENRICH}'." >&2
+    exit 1
+    ;;
+esac
+case "${SCOPE}" in
+  squashed | all-layers | deep-squashed) ;;
+  *)
+    echo "ERROR: scope must be one of squashed, all-layers or deep-squashed, not '${SCOPE}'." >&2
+    exit 1
+    ;;
+esac
 
 # Print command parameters for debugging purposes.
 echo "Running Syft scanner to generate an SBOM with parameters:"

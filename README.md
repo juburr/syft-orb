@@ -2,27 +2,29 @@
 
 <img src="assets/logos/syft-orb-512px.png" width="256" alt="Syft Orb logo: a pink owl in glasses perched on the containers of a CircleCI cargo ship, with a magnifying glass and an SBOM checklist">
 
-# Syft Orb for CircleCI
+# Syft for CircleCI and GitHub Actions
 
 ### A Software Bill of Materials for every build, in a few lines of YAML.
 
 Generate SPDX and CycloneDX SBOMs for container images, source trees, RPMs and DEBs with [Syft](https://github.com/anchore/syft),<br>
-from one job in your workflow and no shell scripts to maintain.<br>
+from one CircleCI job or a few GitHub Actions, with no shell scripts to maintain.<br>
 Strict SHA-512 verification by default · Cached installs · amd64 and arm64
 
 [![CircleCI Build Status](https://circleci.com/gh/juburr/syft-orb.svg?style=shield "CircleCI Build Status")](https://circleci.com/gh/juburr/syft-orb)
+[![GitHub Actions Status](https://github.com/juburr/syft-orb/actions/workflows/actions.yml/badge.svg?branch=master "GitHub Actions Status")](https://github.com/juburr/syft-orb/actions/workflows/actions.yml)
 [![CircleCI Orb Version](https://badges.circleci.com/orbs/juburr/syft-orb.svg)](https://circleci.com/developer/orbs/orb/juburr/syft-orb)
 [![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 [![CircleCI Community](https://img.shields.io/badge/community-CircleCI%20Discuss-343434.svg)](https://discuss.circleci.com/c/ecosystem/orbs)
 
+![CircleCI orb and GitHub Actions](https://img.shields.io/badge/CI-CircleCI%20%7C%20GitHub%20Actions-F97316?style=for-the-badge)
 ![SBOM formats SPDX and CycloneDX](https://img.shields.io/badge/SBOM-SPDX%20%7C%20CycloneDX-DB2777?style=for-the-badge&logoColor=white)
 ![RPM and DEB packages unpacked before scanning](https://img.shields.io/badge/packages-RPM%20%7C%20DEB-7C3AED?style=for-the-badge&logoColor=white)
 ![amd64 and arm64](https://img.shields.io/badge/arch-amd64%20%7C%20arm64-0EA5E9?style=for-the-badge&logo=linux&logoColor=white)
 ![SHA-512 verified by default](https://img.shields.io/badge/SHA--512-strict%20by%20default-16A34A?style=for-the-badge)
 
-**[Quick Start](#-quick-start)** · **[Features](#-why-syft-orb)** · **[Sources](#-supported-sources)** · **[Recipes](#-recipes)** · **[Job Reference](#syftgenerate_sbom)** · **[Security](#-secure-by-design)** · **[Offline Builds](#-running-offline)**
+**[Quick Start](#-quick-start)** · **[Features](#-why-syft-orb)** · **[Sources](#-supported-sources)** · **[Recipes](#-recipes)** · **[Job Reference](#syftgenerate_sbom)** · **[GitHub Actions](#-github-actions)** · **[Security](#-secure-by-design)** · **[Offline Builds](#-running-offline)**
 
-<sub>An unofficial, community-maintained orb. [Contributions are welcome!](#-contributing)</sub>
+<sub>An unofficial, community-maintained CircleCI orb and set of GitHub Actions. [Contributions are welcome!](#-contributing)</sub>
 
 </div>
 
@@ -100,13 +102,13 @@ flowchart LR
 
 ## 🚀 Quick Start
 
-Add the orb and its `syft/generate_sbom` job to a workflow. Copy this into `.circleci/config.yml`:
+On CircleCI, add the orb and its `syft/generate_sbom` job to a workflow. Copy this into `.circleci/config.yml`:
 
 ```yaml
 version: 2.1
 
 orbs:
-  syft: juburr/syft-orb@1.0.0
+  syft: juburr/syft-orb@1.1.0
 
 workflows:
   main:
@@ -132,6 +134,30 @@ Each SBOM is previewed in the job log and persisted to the workspace, ready for 
     attach_workspace: false
     output_formats: "spdx-json,cyclonedx-json,syft-json"
 ```
+
+On GitHub Actions, use the `install` and `generate_sbom` actions in a workflow, such as `.github/workflows/sbom.yml`:
+
+```yaml
+name: SBOM
+
+on: push
+
+jobs:
+  sbom:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: juburr/syft-orb/actions/install@v1.1.0
+      - uses: juburr/syft-orb/actions/generate_sbom@v1.1.0
+        with:
+          source: gcr.io/distroless/static:latest
+          output_formats: spdx-json,cyclonedx-json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sboms
+          path: sboms/
+```
+
+See [GitHub Actions](#-github-actions) for how the actions map to the orb's commands. For the actions, pin a release tag such as `v1.1.0`.
 
 > [!TIP]
 > The Quick Start pins an exact release, so the orb only changes when you choose to upgrade. `@1.0` picks up patch releases, and `@1` picks up minor releases too. The orb version badge above and the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) show the latest release. CircleCI does not accept `@latest`.
@@ -336,7 +362,7 @@ Installs Syft, generates SBOMs in every requested format from a single scan, log
 | `cimg_tag` | `current-22.04` | Tag of the `cimg/base` executor image. |
 | `resource_class` | `medium` | `small`, `medium`, `medium+`, `large`, `xlarge`, `2xlarge`, `2xlarge+`, `arm.medium`, `arm.large`, `arm.xlarge` or `arm.2xlarge`. Use an `arm.*` class to run on arm64. |
 
-## 🧰 Commands
+## 🧰 CircleCI Commands
 
 ### `syft/install`
 
@@ -379,7 +405,34 @@ Use either `sbom_dir` or `sbom_file`; when both are set, `sbom_dir` is used.
 
 Environment variables are expanded in `install`'s `version` and `install_path`, in `generate_sbom`'s `source`, `output_formats`, `output_dir`, `exclude`, `select_catalogers`, `config` and `base_path`, and in `log_sbom`'s `sbom_dir` and `sbom_file`.
 
+## ⚡ GitHub Actions
+
+Each of the orb's commands has a GitHub Action of the same name. The actions run the same scripts as the orb, so they install, verify, scan and log the same way, and take the same inputs with the same defaults.
+
+| Action | Orb command | Inputs |
+| --- | --- | --- |
+| `juburr/syft-orb/actions/install` | [`syft/install`](#syftinstall) | `version`, `verify_checksums`, `caching`, `install_path` |
+| `juburr/syft-orb/actions/generate_sbom` | [`syft/generate_sbom`](#syftgenerate_sbom-1) | `source` (required), `output_formats`, `output_dir`, `scope`, `enrich`, `exclude`, `select_catalogers`, `config`, `base_path` |
+| `juburr/syft-orb/actions/log_sbom` | [`syft/log_sbom`](#syftlog_sbom) | `sbom_dir`, `sbom_file`, `pretty` |
+
+The [Quick Start](#-quick-start) shows a complete workflow. How they differ from the orb:
+
+- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.0`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/syft-orb/actions/generate_sbom@<sha> # v1.1.0`.
+- **No job.** The `syft/generate_sbom` job is CircleCI's: it attaches and persists the workspace around the commands. In a workflow, run the actions as steps, and hand the SBOMs to other jobs with [`actions/upload-artifact`](https://github.com/actions/upload-artifact) and `actions/download-artifact`.
+- **Environment variables.** The orb expands `$NAME` in its string parameters with the CircleCI CLI, which GitHub's runners don't have, so the actions take values as they are. Use GitHub's expressions instead, such as `source: ghcr.io/my-org/my-app:${{ github.sha }}`. A leading `~/` in `install_path` is still the home directory.
+- **`enrich`, `scope` and `pretty`.** CircleCI checks the orb's enums and booleans before any step runs. The actions' inputs are plain strings, which the scripts check before running Syft: `enrich` and `scope` take the values listed above, and `pretty` takes `true` or `false`.
+- **Caching.** `install` caches the verified release with [`actions/cache`](https://github.com/actions/cache), using the same key ingredients as the orb. The cache counts toward the repository's GitHub Actions cache storage, which GitHub limits (10 GB by default) by evicting the least recently used caches.
+- **`PATH`.** `install` puts `install_path` on the `PATH` of later steps through `GITHUB_PATH`.
+- **RPM and DEB sources.** On a runner without `rpm2archive`, an RPM source installs the `rpm` package first with `sudo apt-get`, as on `cimg/base`. GitHub's Ubuntu runners have `dpkg-deb` and passwordless `sudo`.
+- **Runners.** CI installs on `ubuntu-24.04` and `ubuntu-24.04-arm`, and once from the cache with the download hosts blocked. It also scans an image in one and several formats, `dir:` and `file:` sources, an RPM and a DEB, with exclusions and cataloger selection, and logs SBOMs both ways.
+
+The actions are composite actions in [`actions/`](actions), next to the orb's source. Each passes its inputs to the orb's script as environment variables, and [`actions/run_script.sh`](actions/run_script.sh) gives the script what CircleCI would: a `BASH_ENV` file for the values it hands to later steps, which it then passes on through `GITHUB_PATH` and `GITHUB_ENV`.
+
+Anchore's own [sbom-action](https://github.com/anchore/sbom-action) also runs Syft on GitHub. These actions install only versions this orb's checksum table verifies, by default, unpack RPM and DEB packages before scanning, and write several formats from one scan, as the orb does.
+
 ## 📦 Upgrading
+
+v1.1.0 adds [GitHub Actions](#-github-actions) for the three commands. Nothing changes for CircleCI pipelines: `generate_sbom` and `log_sbom` now also run without the CircleCI CLI, using values as they are, and check `enrich`, `scope` and `pretty` themselves, which CircleCI already did.
 
 v1.0.0 renames this job and these parameters:
 
@@ -400,7 +453,7 @@ Behavior changes:
 - **Least Privilege**: `install` installs to a user-owned directory by default, with no `sudo`. The only `sudo` in this orb is `generate_sbom` installing a missing `rpm2archive`, `tar` or `dpkg-deb` for an RPM or DEB source when the job doesn't run as root; preinstall them in the executor image to avoid it.
 - **Integrity**: SHA-512 checksum validation of downloaded binaries, on by default and failing closed: a Syft version this orb has no checksum for is refused, not installed unverified, and a binary that can't run on the executor never replaces an existing install. See [Checksum Verification](#-checksum-verification) for the `known_versions` and `"false"` opt-outs.
 - **Provenance**: Installs directly from Syft's official [releases page](https://github.com/anchore/syft/releases/) on GitHub. No third-party websites, domains, or proxies are used.
-- **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/). RPM and DEB contents are unpacked into a temporary directory from `mktemp`, removed when the step exits, whether the scan passes or fails.
+- **Confidentiality**: All secrets and environment variables are handled in accordance with CircleCI's [security recommendations](https://circleci.com/docs/security-recommendations/) and [best practices](https://circleci.com/docs/orbs-best-practices/). RPM and DEB contents are unpacked into a temporary directory from `mktemp`, removed when the step exits, whether the scan passes or fails. The GitHub Actions pass inputs to the scripts as environment variables, never pasting them into a script, and pin the actions they use (`actions/cache`) to a commit SHA.
 - **Privacy**: No usage data of any kind is collected or shipped back to the orb developer. Syft's start-up update check is turned off for scans run through `generate_sbom`. Enrichment, on by default as `enrich: all`, looks up package metadata in public package registries; `enrich: none` turns it off. See [Network Access](#-network-access).
 
 > [!IMPORTANT]
@@ -418,6 +471,8 @@ Linux executors on `x86_64` (amd64) and `aarch64`/`arm64` (arm64), including Cir
 Linux arm64 builds exist from Syft 0.28.0 onward. The `syft/generate_sbom` job runs on `cimg/base`, which is multi-arch, so an `arm.*` `resource_class` is all it takes to run it on arm64 (see [Running on Arm](#running-on-arm)). `install` and `generate_sbom` need bash 4 or newer, and `install` also needs `curl` or `wget`, `awk`, `tar`, `gzip`, and the standard coreutils, including `mktemp` and, when it verifies, `sha512sum`. `cimg/base` ships `dpkg-deb` but not `rpm`, so an RPM source on it installs `rpm` first.
 
 The download cache is keyed by Syft version, executor architecture and home directory, so amd64 and arm64 jobs never share a cached binary. On executors whose `PATH` doesn't already include `install_path` (for example, machine executors), `install` adds it for later steps through `BASH_ENV`.
+
+The [GitHub Actions](#-github-actions) run on GitHub-hosted `ubuntu-24.04` (amd64) and `ubuntu-24.04-arm` (arm64) runners, which CI covers, and on self-hosted Linux runners with the same tools.
 
 ## 🔐 Checksum Verification
 
@@ -470,7 +525,7 @@ Hosts below were determined from the Syft v1.52.0 source (the orb's default vers
 - If a Go toolchain is on `PATH` and a `go.mod` is in scope, Syft runs `go list` for every `enrich` value except `none` (including non-Go values such as `javascript`), or whenever a config file sets `golang.use-packages-lib: true`. It can download missing modules through `GOPROXY` (`proxy.golang.org`, possibly redirecting to `storage.googleapis.com`), fall back to the module's own VCS host (any host, e.g. `github.com`) for private modules or ones the proxy cannot serve, because the default `GOPROXY` ends in `direct`, and check hashes missing from `go.sum` against `GOSUMDB` (`sum.golang.org`). With other `enrich` values, set `SYFT_GOLANG_USE_PACKAGES_LIB=false` to stop Syft from running `go list`. `cimg/base` has no Go toolchain.
 - Syft's start-up update check (`toolbox-data.anchore.io`) is disabled for scans run through the `syft/generate_sbom` command and job, which set `SYFT_CHECK_FOR_APP_UPDATE=false` since the orb pins the version (a value you set yourself takes precedence). If you run `syft` directly after `syft/install`, set `SYFT_CHECK_FOR_APP_UPDATE=false` in your job to avoid the request.
 
-`install` caches by default (`caching: true`, and always in the `syft/generate_sbom` job), so it also uses CircleCI's cache storage. On CircleCI Cloud, the [runner FAQ](https://circleci.com/docs/guides/execution-runner/runner-faqs/#what-connectivity-is-required) lists what a runner needs to reach; on CircleCI Server, it is your installation's object storage.
+`install` caches by default (`caching: true`, and always in the `syft/generate_sbom` job), so it also uses CircleCI's cache storage. On CircleCI Cloud, the [runner FAQ](https://circleci.com/docs/guides/execution-runner/runner-faqs/#what-connectivity-is-required) lists what a runner needs to reach; on CircleCI Server, it is your installation's object storage. On GitHub Actions, the cache uses GitHub's cache service through `actions/cache`: GitHub-hosted runners always can, and a self-hosted runner needs the hosts GitHub lists for [communication with GitHub](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners#communication-between-self-hosted-runners-and-github).
 
 ## 📡 Running Offline
 
@@ -486,7 +541,7 @@ This is an unofficial, community-maintained orb, and contributions are welcome! 
 
 - **Found a bug or have an idea?** [Open an issue](https://github.com/juburr/syft-orb/issues) or a [pull request](https://github.com/juburr/syft-orb/pulls).
 - **Need a newer Syft release?** Generate its checksums with `src/scripts/install_hash.sh -v <version>`, paste them into the `sha512sums` table in [`src/scripts/install.sh`](src/scripts/install.sh), and open a pull request. The script prints entries for linux amd64 and arm64 after checking each asset against `syft_<version>_checksums.txt`, the SHA-256 list Syft publishes with each release, and needs `cosign` to verify that list's keyless Sigstore signature for releases from 0.104.0 on. It also needs bash 4 or newer, `curl`, `awk`, `sed`, `tar`, `gzip` and the standard coreutils, including `mktemp`, `sha256sum` and `sha512sum`. For a release with nothing published to check against, `-c` takes a checksum from another official source (a SHA-1 one also needs `sha1sum`), or `NONE`; it never overrides what the release did publish.
-- **Before opening a pull request**, run the checks CI runs, with the [CircleCI CLI](https://circleci.com/docs/local-cli/) and [ShellCheck](https://www.shellcheck.net/). The tests run offline, with stand-ins for `syft` and the downloads they need; `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access. CI also runs integration tests on amd64 and arm64.
+- **Before opening a pull request**, run the checks CI runs, with the [CircleCI CLI](https://circleci.com/docs/local-cli/) and [ShellCheck](https://www.shellcheck.net/). The tests run offline, with stand-ins for `syft` and the downloads they need; `circleci orb validate` checks the packed orb against the CircleCI API, so it needs network access. CI also runs integration tests on amd64 and arm64, with the orb's commands on CircleCI and the actions on GitHub's runners. A change to a command's parameters needs the same change to its action in `actions/`, which `tests/actions_test.sh` checks.
 
   ```bash
   yamllint .
@@ -512,5 +567,5 @@ Need the logo for a slide deck, blog post, or internal developer portal? PNGs wi
   <br>
   <sub>Know what ships in every build. If this orb helps your team, a ⭐ helps others find it.</sub>
   <br>
-  <sub><a href="#syft-orb-for-circleci">Back to top ↑</a></sub>
+  <sub><a href="#syft-for-circleci-and-github-actions">Back to top ↑</a></sub>
 </div>

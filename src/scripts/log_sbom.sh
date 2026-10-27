@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# log_sbom.sh - Print SBOM contents to CircleCI output for logging/debugging
+# log_sbom.sh - Print SBOM contents to the step log for logging/debugging
 #
 # Supports two modes:
 # 1. Directory mode (sbom_dir): Logs all SBOM files in a directory
@@ -11,10 +11,30 @@
 
 set -euo pipefail
 
-# Ensure CircleCI environment variables can be passed in as orb parameters
-PRETTY="${PARAM_PRETTY}"
-SBOM_DIR=$(printf '%s' "${PARAM_SBOM_DIR}" | circleci env subst)
-SBOM_FILE=$(printf '%s' "${PARAM_SBOM_FILE}" | circleci env subst)
+# Expands environment variables in a parameter value with the CircleCI CLI,
+# reading it on stdin. Without the CLI (GitHub Actions, local runs), the value
+# is used as is.
+subst() {
+  if command -v circleci >/dev/null 2>&1; then
+    printf '%s' "$1" | circleci env subst
+  else
+    printf '%s' "$1"
+  fi
+}
+
+SBOM_DIR=$(subst "${PARAM_SBOM_DIR}")
+SBOM_FILE=$(subst "${PARAM_SBOM_FILE}")
+
+# CircleCI passes a boolean parameter as 1 or 0, and a GitHub Action input as
+# true or false.
+case "${PARAM_PRETTY}" in
+  1 | true) PRETTY=1 ;;
+  0 | false) PRETTY=0 ;;
+  *)
+    echo "ERROR: pretty must be true or false, not '${PARAM_PRETTY}'." >&2
+    exit 1
+    ;;
+esac
 
 # Print command parameters for debugging purposes.
 echo "Running SBOM logger with the following parameters:"
@@ -42,7 +62,7 @@ log_sbom_file() {
 
   echo "=== $(basename "$file") ==="
 
-  if [[ "${is_json}" == "true" && "${PRETTY:-0}" == "1" ]]; then
+  if [[ "${is_json}" == "true" && "${PRETTY}" == "1" ]]; then
     if command -v jq &> /dev/null; then
       # head stops reading after 100 lines, which kills jq with SIGPIPE, and jq
       # fails on a file that isn't valid JSON. Neither stops the log.

@@ -33,6 +33,22 @@ jobs:
       - run:
           name: Run generate_sbom script tests
           command: bash tests/generate_sbom_test.sh
+  test-log-sbom:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Run log_sbom script tests
+          command: bash tests/log_sbom_test.sh
+  test-actions:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - run:
+          name: Check the GitHub Actions against the orb's commands
+          command: bash tests/actions_test.sh
   test-shell-conventions:
     docker:
       - image: cimg/base:current
@@ -51,6 +67,10 @@ workflows:
           filters: *filters
       - test-generate-sbom:
           filters: *filters
+      - test-log-sbom:
+          filters: *filters
+      - test-actions:
+          filters: *filters
       - test-shell-conventions:
           filters: *filters
       - orb-tools/lint:
@@ -67,5 +87,5 @@ workflows:
           pipeline_number: << pipeline.number >>
           vcs_type: << pipeline.project.type >>
           orb_name: syft-orb
-          requires: [test-install, test-env-subst, test-generate-sbom, test-shell-conventions, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
+          requires: [test-install, test-env-subst, test-generate-sbom, test-log-sbom, test-actions, test-shell-conventions, orb-tools/lint, orb-tools/pack, orb-tools/review, shellcheck/check]
           filters: *filters

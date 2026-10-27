@@ -1,0 +1,89 @@
+name: Generate SBOM with Syft
+description: >
+  Generates a Software Bill of Materials for a container image, RPM or DEB
+  package, or filesystem directory, in one or more formats from a single
+  scan. Run the install action first. The GitHub Actions twin of the orb's
+  generate_sbom command.
+author: juburr
+
+inputs:
+  base_path:
+    description: >
+      Override the default base path for SBOM generation. The script sets
+      this itself when left blank.
+    default: ""
+  config:
+    description: >
+      Path to a syft configuration file, passed as --config. Relative paths
+      are resolved against the working directory. Non-empty exclude and
+      select_catalogers inputs replace the same keys in the file. Note that
+      syft also loads .syft.yaml from the working directory on its own when no
+      config is given. RPM and DEB sources are scanned from a temporary
+      extraction directory, so use absolute paths for path-valued settings
+      inside the file (e.g. format.template.path) when scanning packages.
+    default: ""
+  exclude:
+    description: >
+      Comma- or newline-separated glob patterns to exclude from the scan, each
+      passed to syft as --exclude. For dir: and file: sources and extracted
+      RPM/DEB packages, patterns are relative to the scan root and must start
+      with "./", "*/" or "**/", e.g. "./target/**,**/node_modules/**". For
+      container images, patterns match absolute paths inside the image, e.g.
+      "/usr/share/doc/**". Commas inside {a,b} alternations are preserved.
+    default: ""
+  enrich:
+    description: >
+      Enable package data enrichment from local and online sources, to include
+      additional metadata such as licenses, URLs, and more: none, all, golang,
+      java, javascript, python or vcpkg.
+    default: all
+  source:
+    description: >
+      The container image URI, RPM filename, DEB filename, or filesystem
+      directory to scan.
+    required: true
+  output_dir:
+    description: >
+      Directory for the SBOM files, sboms/ when empty. Filenames are derived
+      from the source (package name for RPM/DEB, image name for containers,
+      directory name for paths) with a format-appropriate suffix, such as
+      sboms/myapp-1.0.0.spdx.json.
+    default: ""
+  output_formats:
+    description: >
+      Comma-separated list of output formats to generate from a single scan,
+      such as "spdx-json" or "spdx-json,cyclonedx-json". Supported formats:
+      cyclonedx-json, cyclonedx-xml, github-json, purls, spdx-json,
+      spdx-tag-value, syft-json, syft-table, syft-text, template.
+    default: spdx-json
+  scope:
+    description: >
+      Selection of layers to catalog: squashed, all-layers or deep-squashed.
+    default: squashed
+  select_catalogers:
+    description: >
+      Passed to syft --select-catalogers, adjusting the default cataloger set
+      for the source type. Comma-separated: "+name" adds a cataloger, "-name"
+      or "-tag" removes catalogers, and an unprefixed tag (e.g. "rust") keeps
+      only the default catalogers with that tag. Unprefixed cataloger names are
+      rejected by syft. To replace the default set itself, use
+      default-catalogers in a config file. See "syft cataloger list" for names
+      and tags.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Generate SBOM
+      shell: bash
+      env:
+        PARAM_BASE_PATH: ${{ inputs.base_path }}
+        PARAM_CONFIG: ${{ inputs.config }}
+        PARAM_ENRICH: ${{ inputs.enrich }}
+        PARAM_EXCLUDE: ${{ inputs.exclude }}
+        PARAM_SOURCE: ${{ inputs.source }}
+        PARAM_OUTPUT_DIR: ${{ inputs.output_dir }}
+        PARAM_OUTPUT_FORMATS: ${{ inputs.output_formats }}
+        PARAM_SCOPE: ${{ inputs.scope }}
+        PARAM_SELECT_CATALOGERS: ${{ inputs.select_catalogers }}
+      run: bash "${GITHUB_ACTION_PATH}/../run_script.sh" "${GITHUB_ACTION_PATH}/../../src/scripts/generate_sbom.sh"
