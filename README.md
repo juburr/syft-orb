@@ -108,7 +108,7 @@ On CircleCI, add the orb and its `syft/generate_sbom` job to a workflow. Copy th
 version: 2.1
 
 orbs:
-  syft: juburr/syft-orb@1.1.0
+  syft: juburr/syft-orb@1.1.1
 
 workflows:
   main:
@@ -146,8 +146,8 @@ jobs:
   sbom:
     runs-on: ubuntu-24.04
     steps:
-      - uses: juburr/syft-orb/actions/install@v1.1.0
-      - uses: juburr/syft-orb/actions/generate_sbom@v1.1.0
+      - uses: juburr/syft-orb/actions/install@v1.1.1
+      - uses: juburr/syft-orb/actions/generate_sbom@v1.1.1
         with:
           source: gcr.io/distroless/static:latest
           output_formats: spdx-json,cyclonedx-json
@@ -157,7 +157,7 @@ jobs:
           path: sboms/
 ```
 
-See [GitHub Actions](#-github-actions) for how the actions map to the orb's commands. For the actions, pin a release tag such as `v1.1.0`.
+See [GitHub Actions](#-github-actions) for how the actions map to the orb's commands. For the actions, pin a release tag such as `v1.1.1`.
 
 > [!TIP]
 > The Quick Start pins an exact release, so the orb only changes when you choose to upgrade. `@1.0` picks up patch releases, and `@1` picks up minor releases too. The orb version badge above and the [Orb Registry](https://circleci.com/developer/orbs/orb/juburr/syft-orb) show the latest release. CircleCI does not accept `@latest`.
@@ -417,7 +417,7 @@ Each of the orb's commands has a GitHub Action of the same name. The actions run
 
 The [Quick Start](#-quick-start) shows a complete workflow. How they differ from the orb:
 
-- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.0`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/syft-orb/actions/generate_sbom@<sha> # v1.1.0`.
+- **Versions.** An action is referenced by the repository's release tag, such as `v1.1.1`, the same tag the orb is published from. There is no moving major tag such as `v1` yet. For the strongest pinning, use the tag's commit SHA: `juburr/syft-orb/actions/generate_sbom@<sha> # v1.1.1`.
 - **No job.** The `syft/generate_sbom` job is CircleCI's: it attaches and persists the workspace around the commands. In a workflow, run the actions as steps, and hand the SBOMs to other jobs with [`actions/upload-artifact`](https://github.com/actions/upload-artifact) and `actions/download-artifact`.
 - **Environment variables.** The orb expands `$NAME` in its string parameters with the CircleCI CLI, which GitHub's runners don't have, so the actions take values as they are. Use GitHub's expressions instead, such as `source: ghcr.io/my-org/my-app:${{ github.sha }}`. A leading `~/` in `install_path` is still the home directory.
 - **`enrich`, `scope` and `pretty`.** CircleCI checks the orb's enums and booleans before any step runs. The actions' inputs are plain strings, which the scripts check before running Syft: `enrich` and `scope` take the values listed above, and `pretty` takes `true` or `false`.
@@ -431,6 +431,8 @@ The actions are composite actions in [`actions/`](actions), next to the orb's so
 Anchore's own [sbom-action](https://github.com/anchore/sbom-action) also runs Syft on GitHub. These actions install only versions this orb's checksum table verifies, by default, unpack RPM and DEB packages before scanning, and write several formats from one scan, as the orb does.
 
 ## 📦 Upgrading
+
+Upgrading from v1.1.0 to v1.1.1? Nothing changes for CircleCI pipelines. Two fixes to the GitHub Actions: they no longer trace the step's environment in a job that traces every step (`SHELLOPTS=xtrace`, or `set -x` in its `BASH_ENV`), where a secret could reach the log in a form GitHub doesn't mask; and they pass on every variable a command exports, even one the step already had.
 
 v1.1.0 adds [GitHub Actions](#-github-actions) for the three commands. Nothing changes for CircleCI pipelines: `generate_sbom` and `log_sbom` now also run without the CircleCI CLI, using values as they are, and check `enrich`, `scope` and `pretty` themselves, which CircleCI already did.
 

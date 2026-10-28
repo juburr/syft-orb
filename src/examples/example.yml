@@ -4,7 +4,7 @@ description: >
 usage:
   version: 2.1
   orbs:
-    syft: juburr/syft-orb@1.1.0
+    syft: juburr/syft-orb@1.1.1
   jobs:
     # Example 1: Single format with auto-generated output
     # Outputs to: sboms/static-latest.spdx.json
